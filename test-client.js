@@ -19,6 +19,10 @@ ports.get('devious-boxes:account-provider', function(services) {
 		var stations = yield client.stations()
 		var station = stations.find(function(s) { return s.name == 'Folk' })
 		console.log(station)
-		console.log(yield client.cache(station.id))
+		console.log((yield client.cache(station.id)).filter(function(song) {
+			return song.songName != null
+		}).map(function(song) {
+			return song.songName + " by " + song.artistName
+		}))
 	}).catch(function(e) { console.error(e.stack) })
 })

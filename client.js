@@ -3,6 +3,7 @@ var pull = require('./util/pull')
 var hyperquest = require('hyperquest')
 var crypto = require('crypto')
 var util = require('util')
+var Stream = require('stream')
 
 function hexDecode(data) {
 	return new Buffer(data, 'hex').binarySlice()
@@ -42,7 +43,9 @@ function Client(partner) {
 	this.caches = {}
 	this.places = {}
 	this.stations = []
-	this.request = hyperquest
+	this.request = function() {
+		return pull.from.duplex(hyperquest.apply(null, arguments))
+	}
 }
 
 var iv = new Buffer("")
@@ -61,7 +64,7 @@ Client.prototype.decrypt = function(data) {
 	return Buffer.concat([
 		c.update(data),
 		c.final()
-	])
+	]).toString('utf-8')
 }
 
 Client.prototype.partnerLogin = function*() {
@@ -178,10 +181,12 @@ Client.prototype.call = function*(ssl, method, data, opts) {
 		data = this.encrypt(data)
 	}
 
+	var req = this.request(url, {method: 'POST'})
+
 	var res = yield new Promise(function(resolve, reject) {
 		pull(
 			pull.values([data]),
-			pull.from.duplex(self.request(url, {method: 'POST'})),
+			req,
 			pull.collect(function(err, data) {
 				if(err)
 					reject(err)

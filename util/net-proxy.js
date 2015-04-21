@@ -43,7 +43,7 @@ module.exports = function(ports) {
 				break
 			}
 		})
-
+.
 		return pull.from.duplex(mx)
 	})()
 
@@ -51,7 +51,7 @@ module.exports = function(ports) {
 		return pull.from.duplex()
 	}
 
-	function tcpServer(meta) {
+	function tcpServer(meta) {.
 		var mx = MuxDemux()
 
 		function handle(s) {
@@ -69,6 +69,8 @@ module.exports = function(ports) {
 			server = tls.createServer(meta, handle)
 		else
 			server = net.createServer(meta, handle)
+
+		console.log(meta)
 
 		if(meta.listen.role && ports) {
 			server.listen(ports.register(meta.listen))

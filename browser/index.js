@@ -43,9 +43,14 @@ function request(uri, opts) {
 		console.log('job running', opts, mx)
 		var real = mx.http.createStream(xtend(opts, {
 			type: 'client',
-		}))
+		}), {
+			allowHalfOpen: true
+		})
 		stream.sink.resolve(pull.from.sink(real))
-		stream.source.resolve(pull.from.source(real))
+		stream.source.resolve(pull(pull.from.source(real), pull.map(function(d) {
+			console.log('<--', d)
+			return String.fromCharCode.apply(String, d.data)
+		})))
 	})
 
 	return stream
@@ -76,7 +81,7 @@ tcp.client = function(host, port, tls) {
 }
 tcp.server = function(port, seaport, cb) {
 	if(typeof(seaport) == 'function') cb = seaport, seaport = undefined
-	if(typeof(port) == 'string') {
+	if(typeof(port) == 'string' || typeof(port) == 'object') {
 		var t = seaport; seaport = port, port = seaport
 	}
 	var mxdx = MuxDemux(function(s) {
@@ -93,10 +98,10 @@ tcp.server = function(port, seaport, cb) {
 	run(function() {
 		mxdx.pipe(mx.tcp.createStream({
 			type: 'server',
-			listen: {
-				port: port,
+			listen: xtend(seaport, {
+				port: port || seaport.port,
 				role: seaport,
-			},
+			}),
 		})).pipe(mxdx)
 	})
 }
@@ -124,12 +129,32 @@ ports.on('register', function(meta) {
 var s = pull.from.duplex(ports.createStream())
 pull(s, tcp.client('localhost', 9090), s)
 
-pull(request('http://google.com'), pull.drain(function(d) {
-	console.log(d.data.map(function(c) {
-		return String.fromCharCode(c)
-	}).join(''))
-}))
+var co = require('co')
 
-tcp.server(3001, 'heyo', function(s) {
-	pull(s, pull.log())
+co(function*() {
+	var username = prompt('Username'), password = prompt('Password')
+	var client = new (require('../client'))()
+	client.request = request
+	console.log('Partner login:', client.partner.username)
+	yield* client.partnerLogin()
+	console.log('Login as', username)
+	yield* client.login(username, password)
+
+	setInterval(function() {
+		co(client.fetchStations.bind(client)).catch(function(e) {
+			console.error(e.stack)
+		})
+	}, 60 * 1000)
+
+	tcp.server({
+		role: 'devious-boxes:account-provider', 
+		account: username,
+	}, function(s) {
+		console.log('connection', s)
+		var d = require('dnode')(require('../account-provider').publish(client))
+		pull(s, pull.from.duplex(d), s)
+	})
+	server.listen(ports.register('devious-boxes:account-provider', { account: username }))
+}).catch(function(e) {
+	console.error(e.stack)
 })
