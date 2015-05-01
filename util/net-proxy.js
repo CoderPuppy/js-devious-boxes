@@ -43,7 +43,7 @@ module.exports = function(ports) {
 				break
 			}
 		})
-.
+
 		return pull.from.duplex(mx)
 	})()
 
@@ -51,7 +51,7 @@ module.exports = function(ports) {
 		return pull.from.duplex()
 	}
 
-	function tcpServer(meta) {.
+	function tcpServer(meta) {
 		var mx = MuxDemux()
 
 		function handle(s) {
@@ -91,6 +91,14 @@ module.exports = function(ports) {
 
 		case 'net':
 			pull(pull.from.source(s), tcpStream, pull.from.sink(s))
+			break
+
+		case 'seaport':
+			if(ports) {
+				s.pipe(ports.createStream('remote')).pipe(s)
+			} else {
+				console.warn('seaport requested')
+			}
 			break
 
 			// TODO: tls, https?

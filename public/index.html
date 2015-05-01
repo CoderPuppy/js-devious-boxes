@@ -1,2 +1,38 @@
 <!doctype html>
+<title>Devious Boxes</title>
 <script src=index.js></script>
+<audio id=player></audio>
+<div id=controls>
+	<div id=song>
+		<h1 id=song-name></h1>
+		<h3 id=song-artist></h3>
+		<img id=albumart>
+	</div>
+	<div class=bar>
+		<button id=playpause-btn>Play</button>
+		<button id=skip-btn>Skip</button>
+		<input id=volume-slider type=range min=0 max=100 value=100>
+		<input id=position-slider type=range min=0 value=0>
+	</div>
+</div>
+<select id=stations multiple></select>
+<style>
+	#controls {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 25%;
+		bottom: 0;
+	}
+	#stations {
+		position: absolute;
+		top: 0;
+		left: 75%;
+		right: 0;
+		bottom: 0;
+	}
+	#albumart {
+		width: 20em;
+		height: 20em;
+	}
+</style>

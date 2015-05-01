@@ -1,160 +1,163 @@
 var pull = require('../util/pull')
 var xtend = require('xtend')
-var MuxDemux = require('mux-demux')
+var URL = require('url')
+var dnode = require('dnode')
+var bean = require('bean')
+var co = require('co')
+var Promise = require('bluebird')
 
-var mx
-var queue = []
-require('reconnect-engine')(function(stream) {
-	mx = MuxDemux()
-	mx.http = MuxDemux()
-	mx.http.pipe(mx.createStream('http')).pipe(mx.http)
-	mx.tcp = MuxDemux()
-	mx.tcp.pipe(mx.createStream('net')).pipe(mx.tcp)
-	mx.pipe(stream).pipe(mx)
-	queue.forEach(function(req) {
-		req()
-	})
-	queue = []
-	console.log('Connected')
-}).on('disconnect', function() {
-	mx = null
-}).connect('/engine.io')
-
-function run(job) {
-	if(mx)
-		job()
-	else
-		queue.push(job)
-}
-
-var url = require('url')
-function request(uri, opts) {
-	if(typeof(uri) == 'object') opts = uri, uri = undefined
-	if(!opts) opts = {}
-	if(uri != null) opts.uri = uri
-	// if(typeof(opts.uri) == 'string') opts.uri = url.parse(opts.uri, true)
-
-	var stream = {
-		sink: pull.defer.sink(),
-		source: pull.defer.source(),
-	}
-		
-	run(function() {
-		console.log('job running', opts, mx)
-		var real = mx.http.createStream(xtend(opts, {
-			type: 'client',
-		}), {
-			allowHalfOpen: true
-		})
-		stream.sink.resolve(pull.from.sink(real))
-		stream.source.resolve(pull(pull.from.source(real), pull.map(function(d) {
-			console.log('<--', d)
-			return String.fromCharCode.apply(String, d.data)
-		})))
-	})
-
-	return stream
-}
-
-var tcp = {}
-tcp.client = function(host, port, tls) {
-	var stream = {
-		sink: pull.defer.sink(),
-		source: pull.defer.source(),
-	}
-		
-	run(function() {
-		console.log('job running %s:%s', host, port, mx)
-		var real = mx.tcp.createStream({
-			type: 'client',
-			host: host,
-			port: port,
-			tls: !!tls,
-		})
-		stream.sink.resolve(pull.from.sink(real))
-		stream.source.resolve(pull(pull.from.source(real), pull.map(function(d) {
-			return String.fromCharCode.apply(String, d.data)
-		})))
-	})
-
-	return stream
-}
-tcp.server = function(port, seaport, cb) {
-	if(typeof(seaport) == 'function') cb = seaport, seaport = undefined
-	if(typeof(port) == 'string' || typeof(port) == 'object') {
-		var t = seaport; seaport = port, port = seaport
-	}
-	var mxdx = MuxDemux(function(s) {
-		cb({
-			sink: pull.from.sink(s),
-			source: pull(pull.from.source(s), pull.map(function(d) {
-				return String.fromCharCode.apply(String, d.data)
-			})),
-			local: s.meta.address,
-			remote: s.meta.remote,
-		})
-	})
-
-	run(function() {
-		mxdx.pipe(mx.tcp.createStream({
-			type: 'server',
-			listen: xtend(seaport, {
-				port: port || seaport.port,
-				role: seaport,
-			}),
-		})).pipe(mxdx)
-	})
-}
+var conn = require('./connection')
+var request = conn.request
+var tcp = conn.tcp
+var ports = Promise.promisifyAll(conn.ports)
 
 var accounts = new Map()
+var hosts = new Map()
+var mixer = require('../mixer')()
+mixer.cache = new Map()
 
-var ports = require('seaport')()
-ports.on('register', function(meta) {
-	console.log(meta)
-	if(meta.role == 'devious-boxes:account-provider') {
-		var hosts = accounts.get(meta.account)
-		if(!hosts) accounts.set(meta.account, hosts = new Set())
-		hosts.add(JSON.stringify([meta.host, meta.port]))
-		console.log(meta.account, hosts, accounts)
-	}
-}).on('free', function(meta) {
-	console.log(meta)
-	if(meta.role == 'devious-boxes:account-provider') {
-		var hosts = accounts.get(meta.account)
-		if(hosts)
-			hosts.delete(JSON.stringify([meta.host, meta.port]))
-		console.log(meta.account, hosts, accounts)
-	}
-})
-var s = pull.from.duplex(ports.createStream())
-pull(s, tcp.client('localhost', 9090), s)
-
-var co = require('co')
-
-co(function*() {
-	var username = prompt('Username'), password = prompt('Password')
-	var client = new (require('../client'))()
-	client.request = request
-	console.log('Partner login:', client.partner.username)
-	yield* client.partnerLogin()
-	console.log('Login as', username)
-	yield* client.login(username, password)
-
-	setInterval(function() {
-		co(client.fetchStations.bind(client)).catch(function(e) {
-			console.error(e.stack)
-		})
-	}, 60 * 1000)
-
-	tcp.server({
-		role: 'devious-boxes:account-provider', 
-		account: username,
-	}, function(s) {
-		console.log('connection', s)
-		var d = require('dnode')(require('../account-provider').publish(client))
-		pull(s, pull.from.duplex(d), s)
+require('domready')(co.wrap(function*() {
+	var player = document.getElementById('player')
+	var stationsEl = document.getElementById('stations')
+	var albumArtEl = document.getElementById('albumart')
+	var songNameEl = document.getElementById('song-name')
+	var songArtistEl = document.getElementById('song-artist')
+	var positionSliderEl = document.getElementById('position-slider')
+	// var songAlbumEl = document.getElementById('song-album')
+	var pullSong = co.wrap(function*() {
+		if(mixer.stations.length == 0) {
+			alert('Select a station')
+			return
+		}
+		var song = yield mixer()
+		var player = document.getElementById('player')
+		console.log(song)
+		player.src = song[2].audioUrlMap.lowQuality.audioUrl
+		player.load()
+		albumArtEl.src = song[2].albumArtUrl
+		songNameEl.textContent = song[2].songName
+		songArtistEl.textContent = song[2].artistName
+		// songAlbumEl.textContent = song.albumName
+		player.play()
 	})
-	server.listen(ports.register('devious-boxes:account-provider', { account: username }))
-}).catch(function(e) {
-	console.error(e.stack)
-})
+	bean.on(player, 'ended', function() {
+		console.log('song ended')
+		pullSong()
+	})
+	bean.on(player, 'loadedmetadata', function() {
+		console.log('duration', player.duration)
+		positionSliderEl.max = player.duration
+	})
+	bean.on(player, 'timeupdate', function() {
+		positionSliderEl.value = player.currentTime
+	})
+	bean.on(player, 'stalled', function() {
+		console.log('stalled', arguments)
+	})
+	bean.on(document.getElementById('playpause-btn'), 'click', function() {
+		if(player.src) {
+			if(player.paused) {
+				player.play()
+				this.textContent = 'Pause'
+			} else {
+				player.pause()
+				this.textContent = 'Play'
+			}
+		} else if(mixer.stations.length == 0) {
+			alert('Select a station')
+		} else {
+			pullSong()
+			this.textContent = 'Pause'
+		}
+	})
+	bean.on(document.getElementById('skip-btn'), 'click', function() {
+		pullSong()
+	})
+	bean.on(document.getElementById('volume-slider'), 'change', function() {
+		player.volume = this.valueAsNumber / 100
+		console.log('volume', player.volume)
+	})
+	bean.on(positionSliderEl, 'change', function() {
+		player.currentTime = this.valueAsNumber
+	})
+	bean.on(stationsEl, 'change', function() {
+		var stations = [].slice.call(stationsEl.selectedOptions)
+			.map(function(o) {
+				var key = o.value
+				if(!mixer.cache.has(key)) {
+					var pkey = JSON.parse(key)
+					if(!hosts.has(pkey[0])) throw new Error('invalid host')
+					var host = hosts.get(pkey[0])
+					mixer.cache.set(key, [host.remote, pkey[1]])
+				}
+				return mixer.cache.get(key)
+			})
+		mixer.stations = stations
+	})
+	pull(pull.seaport(ports, 'devious-boxes:account-provider'), pull.drain(co.wrap(function*(d) {
+		var op = d[0], meta = d[1]
+		var hostId = JSON.stringify([meta.host, meta.port])
+		if(op == 'add') {
+			var account = accounts.get(meta.account)
+			if(!account) {
+				accounts.set(meta.account, account = {
+					hosts: new Set(),
+					stations: new Map(),
+				})
+				account.el = document.createElement('optgroup')
+				account.el.label = meta.account
+				stationsEl.appendChild(account.el)
+			}
+			account.hosts.add(hostId)
+			var host = {
+				hostname: meta.host,
+				port: meta.port,
+				account: account,
+				stations: new Map(),
+			}
+			hosts.set(hostId, host)
+			console.log(meta.account, account, accounts)
+			var d = dnode()
+			var r = new Promise(function(resolve, reject) {
+				d.on('remote', function(r) {
+					resolve(r)
+				})
+			})
+			pull(pull.from.source(d), tcp.client(meta.host, meta.port), pull.from.sink(d))
+			r = Promise.promisifyAll(yield r)
+			host.remote = r
+			var stations = yield r.stationsAsync()
+			;(function() {
+				var s = new Map()
+				stations.forEach(function(station) {
+					s.set(station.id, station.name)
+					var el = document.createElement('option')
+					el.textContent = station.name
+					el.value = JSON.stringify([hostId, station.id])
+					account.el.appendChild(el)
+				})
+				account.stations = s
+			})()
+		} else if(op == 'del') {
+			if(meta.role == 'devious-boxes:account-provider') {
+				var account = accounts.get(meta.account)
+				if(account) {
+					account.hosts.delete(hostId)
+					if(account.hosts.size == 0) {
+						accounts.delete(meta.account)
+						account.el.parentNode.removeChild(account.el)
+					}
+				}
+			}
+		}
+	})))
+
+	window.mixer = mixer
+	window.bean = bean
+	window.ports = ports
+	window.accounts = accounts
+	window.hosts = hosts
+	window.pullSong = pullSong
+	window.co = co
+	yield Promise.resolve()
+}))
