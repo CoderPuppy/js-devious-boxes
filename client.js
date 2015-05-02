@@ -4,6 +4,7 @@ var hyperquest = require('hyperquest')
 var crypto = require('crypto')
 var util = require('util')
 var Stream = require('stream')
+var co = require('co')
 
 function hexDecode(data) {
 	return new Buffer(data, 'hex').binarySlice()
@@ -13,16 +14,25 @@ function time() {
 	return Math.floor(Date.now() / 1000)
 }
 
-function Station(client, s) {
-	this.client = client
-	this.name = s.stationName
-	this.token = s.stationToken
-	this.id = s.stationId
-	this.allowRename = s.allowRename
-	this.allowAddMusic = s.allowAddMusic
-	this.allowDelete = s.allowDelete
-	this.shared = s.isShared
-	this.quickmix = s.isQuickMix
+function Station(client, s, extended) {
+	var self = this
+	self.client = client
+	self.name = s.stationName
+	self.token = s.stationToken
+	self.id = s.stationId
+	self.allowRename = s.allowRename
+	self.allowAddMusic = s.allowAddMusic
+	self.allowDelete = s.allowDelete
+	self.shared = s.isShared
+	self.quickmix = s.isQuickMix
+	self.feedback = {}
+	extended.feedback.thumbsUp.forEach(function(song) {
+		self.feedback[song.songIdentity] = song
+	})
+	extended.feedback.thumbsDown.forEach(function(song) {
+		self.feedback[song.songIdentity] = song
+	})
+	self.extended = extended
 }
 
 Station.prototype.cache = function*(fetch) {
@@ -154,7 +164,7 @@ Client.prototype.login = function*(username, password) {
 	this.userID = res.userId
 	this.userAuthToken = res.userAuthToken
 	this.loggedIn = true
-	this.loadStations(res.stationListResult.stations)
+	yield this.loadStations(res.stationListResult.stations)
 }
 
 Client.prototype.fetchStations = function*() {
@@ -162,14 +172,32 @@ Client.prototype.fetchStations = function*() {
 	this.loadStations(res.stations)
 }
 
-Client.prototype.loadStations = function(stations) {
+Client.prototype.loadStations = function*(stations) {
 	var self = this
-	this.stations = stations.map(function(station) {
-		return new Station(self, station)
+	this.stations = yield stations.map(function(station) {
+		return co(function*() {
+			var extended = yield self.call('station.getStation', {
+				stationToken: station.stationToken,
+				includeExtendedAttributes: true,
+			})
+			return new Station(self, station, extended)
+		})
 	})
 	this.stations.forEach(function(station) {
 		self.stations[station.id] = station
 	})
+}
+
+Client.prototype.rateSong = function*(station, song, rating) {
+	if(rating == 0) {
+		
+	} else {
+		yield this.call('station.addFeedback', {
+			stationToken: station,
+			trackToken: song,
+			isPositive: rating > 0
+		})
+	}
 }
 
 Client.prototype.getCache = function*(station) {

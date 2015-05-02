@@ -4,7 +4,9 @@ module.exports = function(controller) {
 	var speaker = {}
 	speaker.el = document.createElement('audio')
 
-		bean.on(speaker.el, '
+	bean.on(speaker.el, 'ended', function() {
+
+	})
 
 	speaker.load = function(url) { speaker.el.src = url; speaker.el.load() }
 	speaker.resume = function() { speaker.el.play() }

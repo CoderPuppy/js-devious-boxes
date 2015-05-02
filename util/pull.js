@@ -1,9 +1,12 @@
+var match = require('./match')
+
 var pull = require('pull-stream')
 
 pull.to = require('pull-stream-to-stream')
 pull.from = require('stream-to-pull-stream')
 pull.defer = require('pull-defer')
 pull.pushable = require('pull-pushable')
+pull.flow = require('pull-flow')
 pull.seaport = (function() {
 	var semver = require('semver')
 	return pull.Source(function(ports, meta) {
@@ -60,32 +63,6 @@ pull.seaport = (function() {
 	})
 })()
 pull.pausable = function() {
-pull.pausable = function() {
-	var queue = []
-	var paused = true
-	function run(fn) {
-		if(paused)
-			queue.push(fn)
-		else
-			fn()
-	}
-	return pull.Through(function(read) {
-		function _read(end, cb) {
-			run(function() {
-				read(end, function(err, data) {
-					run(function() {
-						cb(err, data)
-					})
-				})
-			})
-		}
-		_read.pause = function() { paused = true }
-		_read.resume = function() {
-			paused = false
-			queue.forEach(function(fn) { fn() })
-		}
-		return _read
-	})()
 	var queue = []
 	var paused = true
 	function run(fn) {
@@ -112,6 +89,34 @@ pull.pausable = function() {
 		_read.paused = function() { return paused }
 		return _read
 	})()
+}
+pull.events = function(self) {
+	var queue = []
+
+	function matches(pat, msg) {
+		return match(pat[0], msg) && match(pat.slice(1), msg.slice(1))
+	}
+
+	self.emit = function() {
+		var msg = []
+		for(var i = 0; i < arguments.length; i++) msg[i] = arguments[i]
+		for(var i = 0; i < queue.length; i++) if(matches(queue[i][0], msg)) queue[i][1](null, msg)
+		return self
+	}
+
+	self.on = pull.Source(function() {
+		var pat = []
+		for(var i = 0; i < arguments.length; i++) pat[i] = arguments[i]
+		function read(end, cb) {
+			if(end) return cb(true)
+			queue.push([pat, cb])
+		}
+		read = pull.flow.serial()(read)
+		read.pat = pat
+		return read
+	})
+
+	return self
 }
 
 module.exports = pull

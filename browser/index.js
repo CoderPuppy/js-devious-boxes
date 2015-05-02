@@ -15,6 +15,10 @@ var accounts = new Map()
 var hosts = new Map()
 var mixer = require('../mixer')()
 mixer.cache = new Map()
+var player = new(require('../player'))(ports, require('./speaker'), {
+	connect: tcp.client,
+})
+window.player = player
 
 require('domready')(co.wrap(function*() {
 	var player = document.getElementById('player')
@@ -23,7 +27,7 @@ require('domready')(co.wrap(function*() {
 	var songNameEl = document.getElementById('song-name')
 	var songArtistEl = document.getElementById('song-artist')
 	var positionSliderEl = document.getElementById('position-slider')
-	// var songAlbumEl = document.getElementById('song-album')
+	var songAlbumEl = document.getElementById('song-album')
 	var pullSong = co.wrap(function*() {
 		if(mixer.stations.length == 0) {
 			alert('Select a station')
@@ -37,7 +41,7 @@ require('domready')(co.wrap(function*() {
 		albumArtEl.src = song[2].albumArtUrl
 		songNameEl.textContent = song[2].songName
 		songArtistEl.textContent = song[2].artistName
-		// songAlbumEl.textContent = song.albumName
+		songAlbumEl.textContent = song[2].albumName
 		player.play()
 	})
 	bean.on(player, 'ended', function() {
@@ -130,6 +134,7 @@ require('domready')(co.wrap(function*() {
 			;(function() {
 				var s = new Map()
 				stations.forEach(function(station) {
+					console.log(station.name, station)
 					s.set(station.id, station.name)
 					var el = document.createElement('option')
 					el.textContent = station.name

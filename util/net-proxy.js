@@ -15,7 +15,9 @@ module.exports = function(ports) {
 				console.log('http request', s.meta)
 				// i'm just using streams 3 here because it's a very small isolated case
 				// if i ever do anything more with this i'll use pull streams
-				s.pipe(hyperquest(s.meta)).pipe(s)
+				s.pipe(hyperquest(s.meta).on('error', function(e) {
+					s.end()
+				})).pipe(s)
 				break
 
 			case 'server':
@@ -35,7 +37,9 @@ module.exports = function(ports) {
 			case 'client':
 				// again i'm just using streams 3 here because it's a very small isolated case
 				// if i ever do anything more with this i'll use pull streams
-				s.pipe((s.meta.tls ? tls : net).connect(s.meta)).pipe(s)
+				s.pipe((s.meta.tls ? tls : net).connect(s.meta).on('error', function(e) {
+					s.end()
+				})).pipe(s)
 				break
 
 			case 'server':
