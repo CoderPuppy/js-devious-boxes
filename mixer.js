@@ -1,15 +1,18 @@
 module.exports = function() {
-	function* mixer() {
-		if(mixer.stations.length == 0) throw new Error('no stations')
-		var i = mixer.stations.indexOf(mixer.last)
+	function mixer() {
+		if(mixer.options.length == 0) throw new Error('no options')
+		if(mixer.next == null) mixer.next = mixer.options[0]
+		var next = mixer.next
+		mixer.last = next
+		var i = mixer.options.indexOf(next)
 		if(i == -1) i = 0
-		else if(i >= mixer.stations.length - 1) i = 0
+		else if(i >= mixer.options.length - 1) i = 0
 		else i++
-		var station = mixer.stations[i]
-		mixer.last = station
-		return station.concat([yield station[0].pullAsync(station[1])])
+		var option = mixer.options[i]
+		mixer.next = option
+		return next
 	}
-	mixer.stations = []
+	mixer.options = []
 
 	return mixer
 }

@@ -5,6 +5,7 @@ var crypto = require('crypto')
 var util = require('util')
 var Stream = require('stream')
 var co = require('co')
+var utils = require('./util/s')
 
 function hexDecode(data) {
 	return new Buffer(data, 'hex').binarySlice()
@@ -26,12 +27,14 @@ function Station(client, s, extended) {
 	self.shared = s.isShared
 	self.quickmix = s.isQuickMix
 	self.feedback = {}
-	extended.feedback.thumbsUp.forEach(function(song) {
-		self.feedback[song.songIdentity] = song
-	})
-	extended.feedback.thumbsDown.forEach(function(song) {
-		self.feedback[song.songIdentity] = song
-	})
+	if(extended.feedback) {
+		extended.feedback.thumbsUp.forEach(function(song) {
+			self.feedback[song.songIdentity] = song
+		})
+		extended.feedback.thumbsDown.forEach(function(song) {
+			self.feedback[song.songIdentity] = song
+		})
+	}
 	self.extended = extended
 }
 
@@ -189,19 +192,30 @@ Client.prototype.loadStations = function*(stations) {
 }
 
 Client.prototype.rateSong = function*(station, song, rating) {
+	station = utils.id(station)
+	song = utils.id(song)
+	// console.log('rating %s as %s in %s', song, rating, station)
+	var stationR = this.stations[station]
+	if(!stationR) throw new Error('no station: ' + station)
 	if(rating == 0) {
-		
+		var feedback = stationR.feedback[song]
+		if(feedback)
+			yield this.call('station.deleteFeedback', {
+				feedbackId: feedback.feedbackId,
+			})
 	} else {
-		yield this.call('station.addFeedback', {
+		var res = yield this.call('station.addFeedback', {
 			stationToken: station,
 			trackToken: song,
-			isPositive: rating > 0
+			isPositive: rating > 0,
 		})
+		stationR.feedback[song] = res
+		console.log(res)
 	}
 }
 
 Client.prototype.getCache = function*(station) {
-	if(station && station.id) station = station.id
+	station = utils.id(station)
 	var place = this.places[station]
 	var cache = this.caches[station]
 	if(!cache || place == cache.length - 1) {
@@ -218,14 +232,14 @@ Client.prototype.getCache = function*(station) {
 }
 
 Client.prototype.getQueue = function*(station, fetch) {
-	if(station && station.id) station = station.id
+	station = utils.id(station)
 	var cache = yield this.getCache(station)
 	if(typeof(this.places[station]) != 'number') this.places[station] = 0
 	return cache.slice(this.places[station])
 }
 
 Client.prototype.pullSong = function*(station) {
-	if(station && station.id) station = station.id
+	station = utils.id(station)
 	var song = (yield this.getQueue(station))[0]
 	if(!song) throw new Error('no song')
 	this.places[station]++

@@ -15,154 +15,121 @@ var accounts = new Map()
 var hosts = new Map()
 var mixer = require('../mixer')()
 mixer.cache = new Map()
-var player = new(require('../player'))(ports, require('./speaker'), {
+var player = new(require('../player'))(ports, require('./speaker')(), {
 	connect: tcp.client,
 })
 window.player = player
 
 require('domready')(co.wrap(function*() {
-	var player = document.getElementById('player')
-	var stationsEl = document.getElementById('stations')
-	var albumArtEl = document.getElementById('albumart')
-	var songNameEl = document.getElementById('song-name')
-	var songArtistEl = document.getElementById('song-artist')
-	var positionSliderEl = document.getElementById('position-slider')
-	var songAlbumEl = document.getElementById('song-album')
-	var pullSong = co.wrap(function*() {
-		if(mixer.stations.length == 0) {
-			alert('Select a station')
-			return
-		}
-		var song = yield mixer()
-		var player = document.getElementById('player')
-		console.log(song)
-		player.src = song[2].audioUrlMap.lowQuality.audioUrl
-		player.load()
-		albumArtEl.src = song[2].albumArtUrl
-		songNameEl.textContent = song[2].songName
-		songArtistEl.textContent = song[2].artistName
-		songAlbumEl.textContent = song[2].albumName
-		player.play()
+	var E = {
+		mixer: {
+			el: document.getElementById('stations'),
+			accounts: {},
+			stations: {},
+		},
+		player: player.speaker.el,
+		albumArt: document.getElementById('albumart'),
+		songName: document.getElementById('song-name'),
+		songArtist: document.getElementById('song-artist'),
+		positionSlider: document.getElementById('position-slider'),
+		songAlbum: document.getElementById('song-album'),
+		playPauseBtn: document.getElementById('playpause-btn'),
+		rating: {
+			like: document.getElementById('like-btn'),
+			neutral: document.getElementById('neutral-btn'),
+			ban: document.getElementById('ban-btn'),
+		},
+	}
+	document.body.appendChild(E.player)
+	bean.on(E.player, 'loadedmetadata', function() {
+		console.log('duration', this.duration)
+		E.positionSlider.max = this.duration
 	})
-	bean.on(player, 'ended', function() {
-		console.log('song ended')
-		pullSong()
-	})
-	bean.on(player, 'loadedmetadata', function() {
-		console.log('duration', player.duration)
-		positionSliderEl.max = player.duration
-	})
-	bean.on(player, 'timeupdate', function() {
-		positionSliderEl.value = player.currentTime
-	})
-	bean.on(player, 'stalled', function() {
+	pull(player.on('time'), pull.drain(function(msg) {
+		E.positionSlider.value = msg[1]
+	}))
+	bean.on(E.player, 'stalled', function() {
 		console.log('stalled', arguments)
 	})
-	bean.on(document.getElementById('playpause-btn'), 'click', function() {
-		if(player.src) {
-			if(player.paused) {
-				player.play()
-				this.textContent = 'Pause'
-			} else {
-				player.pause()
-				this.textContent = 'Play'
-			}
-		} else if(mixer.stations.length == 0) {
-			alert('Select a station')
-		} else {
-			pullSong()
-			this.textContent = 'Pause'
-		}
-	})
 	bean.on(document.getElementById('skip-btn'), 'click', function() {
-		pullSong()
+		co(function*() {
+			yield player.next()
+		}).catch(function(e) { console.error(e.stack) })
 	})
 	bean.on(document.getElementById('volume-slider'), 'change', function() {
-		player.volume = this.valueAsNumber / 100
-		console.log('volume', player.volume)
+		player.volume(this.valueAsNumber / 100)
 	})
-	bean.on(positionSliderEl, 'change', function() {
-		player.currentTime = this.valueAsNumber
+	bean.on(E.positionSlider, 'change', function() {
+		player.seek(this.valueAsNumber)
 	})
-	bean.on(stationsEl, 'change', function() {
-		var stations = [].slice.call(stationsEl.selectedOptions)
-			.map(function(o) {
-				var key = o.value
-				if(!mixer.cache.has(key)) {
-					var pkey = JSON.parse(key)
-					if(!hosts.has(pkey[0])) throw new Error('invalid host')
-					var host = hosts.get(pkey[0])
-					mixer.cache.set(key, [host.remote, pkey[1]])
-				}
-				return mixer.cache.get(key)
-			})
-		mixer.stations = stations
+
+	bean.on(E.playPauseBtn, 'click', function() {
+		var self = this
+		co(function*() {
+			if(self.textContent == 'Play') yield player.resume()
+			else if(self.textContent == 'Pause') yield player.pause()
+			else throw new Error('bad: ' + self.textContent)
+		}).catch(function(e) { console.error(e.stack) })
 	})
-	pull(pull.seaport(ports, 'devious-boxes:account-provider'), pull.drain(co.wrap(function*(d) {
-		var op = d[0], meta = d[1]
-		var hostId = JSON.stringify([meta.host, meta.port])
-		if(op == 'add') {
-			var account = accounts.get(meta.account)
-			if(!account) {
-				accounts.set(meta.account, account = {
-					hosts: new Set(),
-					stations: new Map(),
-				})
-				account.el = document.createElement('optgroup')
-				account.el.label = meta.account
-				stationsEl.appendChild(account.el)
-			}
-			account.hosts.add(hostId)
-			var host = {
-				hostname: meta.host,
-				port: meta.port,
-				account: account,
-				stations: new Map(),
-			}
-			hosts.set(hostId, host)
-			console.log(meta.account, account, accounts)
-			var d = dnode()
-			var r = new Promise(function(resolve, reject) {
-				d.on('remote', function(r) {
-					resolve(r)
-				})
-			})
-			pull(pull.from.source(d), tcp.client(meta.host, meta.port), pull.from.sink(d))
-			r = Promise.promisifyAll(yield r)
-			host.remote = r
-			var stations = yield r.stationsAsync()
-			;(function() {
-				var s = new Map()
-				stations.forEach(function(station) {
-					console.log(station.name, station)
-					s.set(station.id, station.name)
-					var el = document.createElement('option')
-					el.textContent = station.name
-					el.value = JSON.stringify([hostId, station.id])
-					account.el.appendChild(el)
-				})
-				account.stations = s
-			})()
-		} else if(op == 'del') {
-			if(meta.role == 'devious-boxes:account-provider') {
-				var account = accounts.get(meta.account)
-				if(account) {
-					account.hosts.delete(hostId)
-					if(account.hosts.size == 0) {
-						accounts.delete(meta.account)
-						account.el.parentNode.removeChild(account.el)
-					}
-				}
-			}
-		}
-	})))
+	pull(player.on('resume'), pull.drain(function(msg) {
+		E.playPauseBtn.textContent = 'Pause'
+	}))
+	pull(player.on('pause'), pull.drain(function(msg) {
+		E.playPauseBtn.textContent = 'Play'
+	}))
+
+	pull(player.on('song'), pull.drain(function(msg) {
+		var song = msg[1]
+		console.log(song.songName, song)
+		E.albumArt.src = song.albumArtUrl
+		E.songName.textContent = song.songName
+		E.songArtist.textContent = song.artistName
+		E.songAlbum.textContent = song.albumName
+		if(song.songRating > 0) E.rating.like.checked = true
+		else if(song.songRating == 0) E.rating.neutral.checked = true
+		else if(song.songRating < 0) E.rating.ban.checked = true
+	}))
+
+	bean.on(E.rating.like,    'change', function() { if(this.checked) co(function*() { yield player.rate( 1) }).catch(function(e) { console.error(e.stack) }) })
+	bean.on(E.rating.neutral, 'change', function() { if(this.checked) co(function*() { yield player.rate( 0) }).catch(function(e) { console.error(e.stack) }) })
+	bean.on(E.rating.ban,     'change', function() { if(this.checked) co(function*() { yield player.rate(-1) }).catch(function(e) { console.error(e.stack) }) })
+
+	pull(player.on('account:add'), pull.drain(function(msg) {
+		var account = msg[1]
+		var el = E.mixer.accounts[account.id] = document.createElement('optgroup')
+		el.label = account.id
+		E.mixer.el.appendChild(el)
+	}))
+	pull(player.on('account:rm'), pull.drain(function(msg) {
+		var account = msg[1]
+		var el = E.mixer.accounts[account.id]
+		if(el && el.parentNode)
+			el.parentNode.removeChild(el)
+		delete E.mixer.accounts[account.id]
+	}))
+	pull(player.on('station:add'), pull.drain(function(msg) {
+		var station = msg[1]
+		var el = E.mixer.stations[station.id] = document.createElement('option')
+		el.textContent = station.name
+		el.value = station.id
+		E.mixer.accounts[station.account.id].appendChild(el)
+	}))
+	pull(player.on('station:rm'), pull.drain(function(msg) {
+		var station = msg[1]
+		var el = E.mixer.stations[station.id]
+		if(el && el.parentNode)
+			el.parentNode.removeChild(el)
+		delete E.mixer.stations[station.id]
+	}))
+	bean.on(E.mixer.el, 'change', function() {
+		player.mix([].slice.call(E.mixer.el.selectedOptions) .map(function(o) { return o.value }))
+	})
 
 	window.mixer = mixer
 	window.bean = bean
 	window.ports = ports
 	window.accounts = accounts
 	window.hosts = hosts
-	window.pullSong = pullSong
 	window.co = co
 	yield Promise.resolve()
 }))

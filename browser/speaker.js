@@ -1,17 +1,28 @@
 var bean = require('bean')
+var pull = require('../util/pull')
 
-module.exports = function(controller) {
-	var speaker = {}
-	speaker.el = document.createElement('audio')
+module.exports = function() {
+	var self = {}
+	pull.events(self)
+	self.el = document.createElement('audio')
 
-	bean.on(speaker.el, 'ended', function() {
-
+	bean.on(self.el, 'loadedmetadata', function() {
+		self.meta = {
+			duration: this.duration,
+		}
+		self.emit('audio:meta', self.meta)
+	})
+	bean.on(self.el, 'timeupdate', function() {
+		self.emit('time', this.currentTime)
+	})
+	bean.on(self.el, 'ended', function() {
+		self.emit('end')
 	})
 
-	speaker.load = function(url) { speaker.el.src = url; speaker.el.load() }
-	speaker.resume = function() { speaker.el.play() }
-	speaker.pause = function() { speaker.el.pause() }
-	speaker.paused = function() { return speaker.el.paused }
+	self.load = function(url) { self.el.src = url; self.el.load() }
+	self.resume = function() { self.el.play() }
+	self.pause = function() { self.el.pause() }
+	self.paused = function() { return self.el.paused }
 
-	return speaker
+	return self
 }

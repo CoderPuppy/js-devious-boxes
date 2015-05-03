@@ -7,6 +7,7 @@ pull.from = require('stream-to-pull-stream')
 pull.defer = require('pull-defer')
 pull.pushable = require('pull-pushable')
 pull.flow = require('pull-flow')
+pull.tee = require('pull-tee')
 pull.seaport = (function() {
 	var semver = require('semver')
 	return pull.Source(function(ports, meta) {
@@ -94,15 +95,29 @@ pull.events = function(self) {
 	var queue = []
 
 	function matches(pat, msg) {
-		return match(pat[0], msg) && match(pat.slice(1), msg.slice(1))
+		return match(pat[0], msg[0]) && match(pat.slice(1), msg.slice(1))
 	}
 
 	self.emit = function() {
 		var msg = []
 		for(var i = 0; i < arguments.length; i++) msg[i] = arguments[i]
-		for(var i = 0; i < queue.length; i++) if(matches(queue[i][0], msg)) queue[i][1](null, msg)
+		var oldQueue = queue
+		queue = []
+		for(var i = 0; i < oldQueue.length; i++) {
+			if(matches(oldQueue[i][0], msg)) {
+				oldQueue[i][1](null, msg)
+			} else {
+				queue.push(oldQueue[i])
+			}
+		}
 		return self
 	}
+
+	self.emitter = pull.Sink(function(read) {
+		return pull.drain(function(msg) {
+			self.emit.apply(self, msg)
+		})(read)
+	})()
 
 	self.on = pull.Source(function() {
 		var pat = []

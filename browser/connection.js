@@ -40,7 +40,6 @@ function request(uri, opts) {
 	}
 		
 	run(function() {
-		// console.log('job running', opts, mx)
 		var real = mx.http.createStream(xtend(opts, {
 			type: 'client',
 		}), {
@@ -48,7 +47,6 @@ function request(uri, opts) {
 		})
 		stream.sink.resolve(pull.from.sink(real))
 		stream.source.resolve(pull(pull.from.source(real), pull.map(function(d) {
-			console.log('<--', d)
 			return String.fromCharCode.apply(String, d.data)
 		})))
 	})
@@ -65,7 +63,6 @@ tcp.client = function(host, port, tls) {
 	}
 		
 	run(function() {
-		// console.log('job running %s:%s', host, port, mx)
 		var real = mx.tcp.createStream({
 			type: 'client',
 			host: host,

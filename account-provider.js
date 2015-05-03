@@ -49,5 +49,14 @@ exports.publish = function(client) {
 				cb(err)
 			})
 		},
+		rate: function(station, song, rating) {
+			co(function*() {
+				return yield client.rateSong(station, song, rating)
+			}).then(function() {
+				cb(null)
+			}, function(err) {
+				cb(err)
+			})
+		}
 	}
 }
