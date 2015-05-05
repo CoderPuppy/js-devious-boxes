@@ -3,6 +3,10 @@ exports.id = function id(o) {
 	else return o
 }
 
+exports.cb = function cb(o) {
+	return typeof(o) == 'function' ? o : function(err) { if(err) throw err }
+}
+
 exports.isSong = function isSong(s) {
 	return (typeof(s) == 'string' && s.length == 32) || isSong(s.songIdentity)
 }

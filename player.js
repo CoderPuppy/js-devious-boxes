@@ -3,6 +3,8 @@ var dnode = require('dnode')
 var Promise = require('bluebird')
 var mixer = require('./mixer')
 var utils = require('./util/s')
+var co = require('co')
+var MuxDemux = require('mux-demux')
 var net
 
 function Player(ports, speaker, opts) {
@@ -145,6 +147,68 @@ function Player(ports, speaker, opts) {
 	}))
 
 	pull(self.speaker.on('time'), self.emitter)
+
+	self.interface = {
+		mix: function(mix, cb) {
+			if(!Array.isArray(mix)) {
+				return utils.cb(mix)(null, self.mix())
+			} else {
+				self.mix(mix)
+				utils.cb(cb)(null)
+			}
+		},
+		rate: function() {
+			var station, song, rating, cb = utils.cb()
+			for(var i = 0; i < arguments.length; i++) {
+				var arg = arguments[i]
+				if(typeof(arg) == 'number') rating = arg
+				else if(utils.isSong(arg)) song = arg
+				else if(utils.isStation(arg)) station = arg
+				else if(typeof(arg) == 'function') cb = utils.cb(arg)
+				else cb(new Error('invalid arg: ' + i))
+			}
+			co(function*() {
+				yield self.rate(station, song, rating)
+			}).then(function() {
+				cb(null)
+			}).catch(function(e) {
+				cb(e)
+			})
+		},
+		next: function(cb) {
+			cb = utils.cb(cb)
+			co(function*() {
+				yield self.next()
+			}).then(function() {
+				cb(null)
+			}).catch(function(e) {
+				cb(e)
+			})
+		},
+		resume: function(cb) {
+			cb = utils.cb(cb)
+			co(function*() {
+				yield self.resume()
+			}).then(function() {
+				cb(null)
+			}).catch(function(e) {
+				cb(e)
+			})
+		},
+		pause: function(cb) {
+			cb = utils.cb(cb)
+			co(function*() {
+				yield self.pause()
+			}).then(function() {
+				cb(null)
+			}).catch(function(e) {
+				cb(e)
+			})
+		},
+		paused: function(cb) {
+			utils.cb(cb)(null, self.paused())
+		},
+	}
 }
 
 Player.prototype.mix = function(mix) {
@@ -222,5 +286,70 @@ Player.prototype.paused = function() { return this._paused }
 ;[].forEach(function(name) {
 	Player.prototype[name] = function() { return this.speaker[name].apply(this, arguments) }
 })
+
+Player.prototype.localInterface = function() {
+	var self = this
+	return {
+		player: self,
+		on: function() { return self.on.apply(self, arguments) },
+		mix: co.wrap(function*() { return yield Promise.resolve(self.mix.apply(self, arguments)) }),
+		rate:   co.wrap(function*() { return yield self.rate  .apply(self, arguments) }),
+		next:   co.wrap(function*() { return yield self.next  .apply(self, arguments) }),
+		resume: co.wrap(function*() { return yield self.resume.apply(self, arguments) }),
+		pause:  co.wrap(function*() { return yield self.pause .apply(self, arguments) }),
+		paused: co.wrap(function*() { return yield self.paused.apply(self, arguments) }),
+	}
+}
+
+Player.prototype.stream = function() {
+	var self = this
+
+	var mx = MuxDemux(function(stream) {
+		switch(stream.meta) {
+			case 'dnode':
+				stream.pipe(dnode(self.interface)).pipe(stream)
+				break
+
+			case 'events':
+				pull(self.on(), pull.from.sink(stream))
+				break
+		}
+	})
+
+	return pull.from.duplex(mx)
+}
+
+Player.fromStream = function() {
+	var queue = [], remote
+	function run(fn) {
+		if(remote)
+			fn()
+		else
+			queue.push(fn)
+	}
+
+	var mx = MuxDemux()
+	var d = dnode()
+	d.on('remote', function(r) {
+		remote = Promise.promisifyAll(r)
+		queue.forEach(function(fn) { fn() })
+	})
+	d.pipe(mx.createStream('dnode')).pipe(d)
+
+	var res = {
+		stream: pull.from.duplex(mx),
+		mix:    function() { var a = arguments; return new Promise(function(resolve, reject) { run(function() { remote.mixAsync   .apply(remote, a).then(resolve, reject) }) }) },
+		rate:   function() { var a = arguments; return new Promise(function(resolve, reject) { run(function() { remote.rateAsync  .apply(remote, a).then(resolve, reject) }) }) },
+		next:   function() { var a = arguments; return new Promise(function(resolve, reject) { run(function() { remote.nextAsync  .apply(remote, a).then(resolve, reject) }) }) },
+		resume: function() { var a = arguments; return new Promise(function(resolve, reject) { run(function() { remote.resumeAsync.apply(remote, a).then(resolve, reject) }) }) },
+		pause:  function() { var a = arguments; return new Promise(function(resolve, reject) { run(function() { remote.pauseAsync .apply(remote, a).then(resolve, reject) }) }) },
+		paused: function() { var a = arguments; return new Promise(function(resolve, reject) { run(function() { remote.pausedAsync.apply(remote, a).then(resolve, reject) }) }) },
+	}
+
+	pull.events(res)
+	pull(pull.from.source(mx.createStream('events')), res.emitter)
+
+	return res
+}
 
 module.exports = Player

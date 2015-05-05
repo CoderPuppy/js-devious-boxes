@@ -15,9 +15,9 @@ var accounts = new Map()
 var hosts = new Map()
 var mixer = require('../mixer')()
 mixer.cache = new Map()
-var player = new(require('../player'))(ports, require('./speaker')(), {
+var player = Promise.promisifyAll(new(require('../player'))(ports, require('./speaker')(), {
 	connect: tcp.client,
-})
+}).localInterface())
 window.player = player
 
 require('domready')(co.wrap(function*() {
@@ -27,7 +27,7 @@ require('domready')(co.wrap(function*() {
 			accounts: {},
 			stations: {},
 		},
-		player: player.speaker.el,
+		player: player.player.speaker.el,
 		albumArt: document.getElementById('albumart'),
 		songName: document.getElementById('song-name'),
 		songArtist: document.getElementById('song-artist'),
@@ -41,6 +41,11 @@ require('domready')(co.wrap(function*() {
 		},
 	}
 	document.body.appendChild(E.player)
+	bean.on(E.player, 'error', function() {
+		co(function*() {
+			player.next()
+		}).catch(function(e) { console.error(e.stack) })
+	})
 	bean.on(E.player, 'loadedmetadata', function() {
 		console.log('duration', this.duration)
 		E.positionSlider.max = this.duration
@@ -48,9 +53,6 @@ require('domready')(co.wrap(function*() {
 	pull(player.on('time'), pull.drain(function(msg) {
 		E.positionSlider.value = msg[1]
 	}))
-	bean.on(E.player, 'stalled', function() {
-		console.log('stalled', arguments)
-	})
 	bean.on(document.getElementById('skip-btn'), 'click', function() {
 		co(function*() {
 			yield player.next()
@@ -131,5 +133,6 @@ require('domready')(co.wrap(function*() {
 	window.accounts = accounts
 	window.hosts = hosts
 	window.co = co
+	window.E = E
 	yield Promise.resolve()
 }))

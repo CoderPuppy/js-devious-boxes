@@ -94,17 +94,13 @@ pull.pausable = function() {
 pull.events = function(self) {
 	var queue = []
 
-	function matches(pat, msg) {
-		return match(pat[0], msg[0]) && match(pat.slice(1), msg.slice(1))
-	}
-
 	self.emit = function() {
 		var msg = []
 		for(var i = 0; i < arguments.length; i++) msg[i] = arguments[i]
 		var oldQueue = queue
 		queue = []
 		for(var i = 0; i < oldQueue.length; i++) {
-			if(matches(oldQueue[i][0], msg)) {
+			if(match(oldQueue[i][0], msg)) {
 				oldQueue[i][1](null, msg)
 			} else {
 				queue.push(oldQueue[i])
