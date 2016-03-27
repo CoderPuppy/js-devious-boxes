@@ -12,7 +12,6 @@ module.exports = function(ports) {
 			if(!s.meta) return
 			switch(s.meta.type) {
 			case 'client':
-				console.log('http request', s.meta)
 				// i'm just using streams 3 here because it's a very small isolated case
 				// if i ever do anything more with this i'll use pull streams
 				s.pipe(hyperquest(s.meta).on('error', function(e) {
@@ -31,7 +30,6 @@ module.exports = function(ports) {
 
 	var tcpStream = (function() {
 		var mx = MuxDemux(function(s) {
-			console.log(s.meta)
 			if(!s.meta) return
 			switch(s.meta.type) {
 			case 'client':
@@ -58,6 +56,10 @@ module.exports = function(ports) {
 	function tcpServer(meta) {
 		var mx = MuxDemux()
 
+		mx.on('end', function() {
+			console.log('server closed')
+		})
+
 		function handle(s) {
 			s.pipe(mx.createStream({
 				address: s.address(),
@@ -74,8 +76,6 @@ module.exports = function(ports) {
 		else
 			server = net.createServer(meta, handle)
 
-		console.log(meta)
-
 		if(meta.listen.role && ports) {
 			server.listen(ports.register(meta.listen))
 		} else {
@@ -84,7 +84,17 @@ module.exports = function(ports) {
 			server.listen(meta.listen)
 		}
 
-		return pull.from.duplex(mx)
+		return pull(
+			pull.Through(function(read) {
+				return function(end, cb) {
+					read(end, function(err, data) {
+						if(err) console.log(err)
+						cb(err, data)
+					})
+				}
+			})(),
+			pull.from.duplex(mx)
+		)
 	}
 
 	var mx = MuxDemux(function(s) {
@@ -109,5 +119,23 @@ module.exports = function(ports) {
 		}
 	})
 
-	return pull.from.duplex(mx)
+	return pull(
+		pull.Through(function(read) {
+			var reads = 0
+			return function(end, cb) {
+				reads++
+					// if(reads > 1) console.trace()
+					console.trace()
+				console.log('read', reads)
+				read(end, function(err, data) {
+					if(err) console.log('conn', err)
+					reads--
+					console.log('done', reads)
+					cb(err, data)
+				})
+			}
+		})(),
+		pull.from.duplex(mx)
+	)
+	// return pull.from.duplex(mx)
 }

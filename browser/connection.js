@@ -1,4 +1,5 @@
 var MuxDemux = require('mux-demux')
+var xtend = require('xtend')
 var pull = require('../util/pull')
 
 var mx
@@ -80,7 +81,7 @@ tcp.client = function(host, port, tls) {
 tcp.server = function(port, seaport, cb) {
 	if(typeof(seaport) == 'function') cb = seaport, seaport = undefined
 	if(typeof(port) == 'string' || typeof(port) == 'object') {
-		var t = seaport; seaport = port, port = seaport
+		var t = seaport; seaport = port, port = t
 	}
 	var mxdx = MuxDemux(function(s) {
 		cb({
@@ -98,10 +99,13 @@ tcp.server = function(port, seaport, cb) {
 			type: 'server',
 			listen: xtend(seaport, {
 				port: port || seaport.port,
-				role: seaport,
+				role: seaport.role || seaport,
 			}),
 		})).pipe(mxdx)
 	})
+	return function() {
+		mxdx.end()
+	}
 }
 
 var ports = exports.ports = exports.seaport = require('seaport')()

@@ -18,6 +18,11 @@ module.exports = function() {
 	bean.on(self.el, 'ended', function() {
 		self.emit('end')
 	})
+	bean.on(self.el, 'error', function() {
+		co(function*() {
+			self.emit('end')
+		}).catch(function(e) { console.error(e.stack) })
+	})
 
 	self.load = function(url) { self.el.src = url; self.el.load() }
 	self.resume = function() { self.el.play() }

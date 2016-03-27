@@ -146,7 +146,7 @@ function Player(ports, speaker, opts) {
 		}).catch(function(e) { console.error(e.stack) })
 	}))
 
-	pull(self.speaker.on('time'), self.emitter)
+	pull(self.speaker.on(/time|audio:meta/), self.emitter)
 
 	self.interface = {
 		mix: function(mix, cb) {
@@ -209,6 +209,7 @@ function Player(ports, speaker, opts) {
 			utils.cb(cb)(null, self.paused())
 		},
 	}
+	self.localInterface = self.localInterface()
 }
 
 Player.prototype.mix = function(mix) {
@@ -287,6 +288,7 @@ Player.prototype.paused = function() { return this._paused }
 	Player.prototype[name] = function() { return this.speaker[name].apply(this, arguments) }
 })
 
+// this is replaced with it's result when the player is created
 Player.prototype.localInterface = function() {
 	var self = this
 	return {

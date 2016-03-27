@@ -14,7 +14,6 @@
 		"pull-defer": "~0.1.1",
 		"pull-pushable": "~1.1.4",
 		"pull-tee": "~2.0.0",
-		"pull-flow": "~1.0.0",
 
 		"co": "~4.5.1",
 		"bluebird": "~2.9.24",
@@ -36,8 +35,8 @@
 		"speaker": "~0.2.5"
 	},
 	"devDependencies": {
-		"browserify": "~9.0.8",
-		"watchify": "~3.1.1"
+		"browserify": "~13.0.0",
+		"watchify": "~3.7.0"
 	},
 	"scripts": {
 		"start": "node --harmony server.js",

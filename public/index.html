@@ -19,7 +19,14 @@
 		<input id=ban-btn type=radio value=-1 name=rating-radio><label for=ban-btn>Ban</label>
 	</div>
 </div>
-<select id=stations multiple></select>
+<div id=sidebar>
+	<select id=stations multiple></select>
+	<div id=player-controls>
+		<select id=players></select>
+		<br>
+		<input id=enable-player type=checkbox><input id=player-label type=text>
+	</div>
+</div>
 <style>
 	#controls {
 		position: absolute;
@@ -28,10 +35,24 @@
 		right: 25%;
 		bottom: 0;
 	}
-	#stations {
+	#sidebar {
 		position: absolute;
 		top: 0;
 		left: 75%;
+		right: 0;
+		bottom: 0;
+	}
+	#stations {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 5em;
+	}
+	#player-controls {
+		position: absolute;
+		height: 4em;
+		left: 0;
 		right: 0;
 		bottom: 0;
 	}

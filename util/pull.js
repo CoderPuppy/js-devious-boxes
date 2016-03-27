@@ -6,7 +6,7 @@ pull.to = require('pull-stream-to-stream')
 pull.from = require('stream-to-pull-stream')
 pull.defer = require('pull-defer')
 pull.pushable = require('pull-pushable')
-pull.flow = require('pull-flow')
+// pull.flow = require('pull-flow')
 pull.tee = require('pull-tee')
 pull.seaport = (function() {
 	var semver = require('semver')
@@ -66,30 +66,37 @@ pull.seaport = (function() {
 pull.pausable = function() {
 	var queue = []
 	var paused = true
+	var doEnd = false
 	function run(fn) {
 		if(paused)
 			queue.push(fn)
 		else
 			fn()
 	}
-	return pull.Through(function(read) {
-		function _read(end, cb) {
-			run(function() {
-				read(end, function(err, data) {
-					run(function() {
-						cb(err, data)
+	var res = pull.Through(function(read) {
+		return function(end, cb) {
+			if(doEnd) {
+				cb(true)
+				run(function() { read(true) })
+			} else {
+				run(function() {
+					read(end, function(err, data) {
+						run(function() {
+							cb(err, data)
+						})
 					})
 				})
-			})
+			}
 		}
-		_read.pause = function() { paused = true }
-		_read.resume = function() {
-			paused = false
-			queue.forEach(function(fn) { fn() })
-		}
-		_read.paused = function() { return paused }
-		return _read
 	})()
+	res.pause = function() { paused = true }
+	res.resume = function() {
+		paused = false
+		queue.forEach(function(fn) { fn() })
+	}
+	res.paused = function() { return paused }
+	res.end = function() { doEnd = true }
+	return res
 }
 pull.events = function(self) {
 	var queue = []
@@ -122,7 +129,7 @@ pull.events = function(self) {
 			if(end) return cb(true)
 			queue.push([pat, cb])
 		}
-		read = pull.flow.serial()(read)
+		// read = pull.flow.serial()(read)
 		read.pat = pat
 		return read
 	})

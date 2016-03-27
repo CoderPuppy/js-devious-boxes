@@ -2,23 +2,18 @@ var pull = require('../util/pull')
 var xtend = require('xtend')
 var URL = require('url')
 var dnode = require('dnode')
-var bean = require('bean')
+var bean = require('../util/bean')
 var co = require('co')
 var Promise = require('bluebird')
+var Player = require('./player')
+var PlayerControls = require('./player-controls')
 
 var conn = require('./connection')
 var request = conn.request
 var tcp = conn.tcp
 var ports = Promise.promisifyAll(conn.ports)
 
-var accounts = new Map()
-var hosts = new Map()
-var mixer = require('../mixer')()
-mixer.cache = new Map()
-var player = Promise.promisifyAll(new(require('../player'))(ports, require('./speaker')(), {
-	connect: tcp.client,
-}).localInterface())
-window.player = player
+var player
 
 require('domready')(co.wrap(function*() {
 	var E = {
@@ -27,7 +22,6 @@ require('domready')(co.wrap(function*() {
 			accounts: {},
 			stations: {},
 		},
-		player: player.player.speaker.el,
 		albumArt: document.getElementById('albumart'),
 		songName: document.getElementById('song-name'),
 		songArtist: document.getElementById('song-artist'),
@@ -39,99 +33,50 @@ require('domready')(co.wrap(function*() {
 			neutral: document.getElementById('neutral-btn'),
 			ban: document.getElementById('ban-btn'),
 		},
+		player: {
+			select: document.getElementById('players'),
+			players: {},
+			enable: document.getElementById('enable-player'),
+			label: document.getElementById('player-label'),
+		},
 	}
-	document.body.appendChild(E.player)
-	bean.on(E.player, 'error', function() {
-		co(function*() {
-			player.next()
-		}).catch(function(e) { console.error(e.stack) })
-	})
-	bean.on(E.player, 'loadedmetadata', function() {
-		console.log('duration', this.duration)
-		E.positionSlider.max = this.duration
-	})
-	pull(player.on('time'), pull.drain(function(msg) {
-		E.positionSlider.value = msg[1]
-	}))
-	bean.on(document.getElementById('skip-btn'), 'click', function() {
-		co(function*() {
-			yield player.next()
-		}).catch(function(e) { console.error(e.stack) })
-	})
-	bean.on(document.getElementById('volume-slider'), 'change', function() {
-		player.volume(this.valueAsNumber / 100)
-	})
-	bean.on(E.positionSlider, 'change', function() {
-		player.seek(this.valueAsNumber)
-	})
 
-	bean.on(E.playPauseBtn, 'click', function() {
-		var self = this
-		co(function*() {
-			if(self.textContent == 'Play') yield player.resume()
-			else if(self.textContent == 'Pause') yield player.pause()
-			else throw new Error('bad: ' + self.textContent)
-		}).catch(function(e) { console.error(e.stack) })
-	})
-	pull(player.on('resume'), pull.drain(function(msg) {
-		E.playPauseBtn.textContent = 'Pause'
-	}))
-	pull(player.on('pause'), pull.drain(function(msg) {
-		E.playPauseBtn.textContent = 'Play'
+	pull(pull.seaport(ports, 'devious-boxes:player'), pull.drain(function(d) {
+		var meta = d[1]
+		var id = JSON.stringify([meta.host, meta.port])
+		var label = meta.label || meta.host + ':' + meta.port
+		if(d[0] == 'add') {
+			var el = document.createElement('option')
+			el.textContent = label
+			el.value = id
+			E.player.players[id] = el
+			E.player.select.appendChild(el)
+		} else if(d[0] == 'del') {
+			var el = E.player.players[id]
+			if(el)
+				el.parentNode.removeChild(el)
+			delete E.player.players[id]
+		}
+		console.log(d)
 	}))
 
-	pull(player.on('song'), pull.drain(function(msg) {
-		var song = msg[1]
-		console.log(song.songName, song)
-		E.albumArt.src = song.albumArtUrl
-		E.songName.textContent = song.songName
-		E.songArtist.textContent = song.artistName
-		E.songAlbum.textContent = song.albumName
-		if(song.songRating > 0) E.rating.like.checked = true
-		else if(song.songRating == 0) E.rating.neutral.checked = true
-		else if(song.songRating < 0) E.rating.ban.checked = true
-	}))
+	// var controls// = PlayerControls(player, E)
 
-	bean.on(E.rating.like,    'change', function() { if(this.checked) co(function*() { yield player.rate( 1) }).catch(function(e) { console.error(e.stack) }) })
-	bean.on(E.rating.neutral, 'change', function() { if(this.checked) co(function*() { yield player.rate( 0) }).catch(function(e) { console.error(e.stack) }) })
-	bean.on(E.rating.ban,     'change', function() { if(this.checked) co(function*() { yield player.rate(-1) }).catch(function(e) { console.error(e.stack) }) })
-
-	pull(player.on('account:add'), pull.drain(function(msg) {
-		var account = msg[1]
-		var el = E.mixer.accounts[account.id] = document.createElement('optgroup')
-		el.label = account.id
-		E.mixer.el.appendChild(el)
-	}))
-	pull(player.on('account:rm'), pull.drain(function(msg) {
-		var account = msg[1]
-		var el = E.mixer.accounts[account.id]
-		if(el && el.parentNode)
-			el.parentNode.removeChild(el)
-		delete E.mixer.accounts[account.id]
-	}))
-	pull(player.on('station:add'), pull.drain(function(msg) {
-		var station = msg[1]
-		var el = E.mixer.stations[station.id] = document.createElement('option')
-		el.textContent = station.name
-		el.value = station.id
-		E.mixer.accounts[station.account.id].appendChild(el)
-	}))
-	pull(player.on('station:rm'), pull.drain(function(msg) {
-		var station = msg[1]
-		var el = E.mixer.stations[station.id]
-		if(el && el.parentNode)
-			el.parentNode.removeChild(el)
-		delete E.mixer.stations[station.id]
-	}))
-	bean.on(E.mixer.el, 'change', function() {
-		player.mix([].slice.call(E.mixer.el.selectedOptions) .map(function(o) { return o.value }))
+	bean.on(E.player.enable, 'change', function() {
+		if(this.checked) {
+			E.player.label.readOnly = true
+			player = Player(E.player.label.value)
+			// controls = PlayerControls(player, E)
+		} else {
+			E.player.label.readOnly = false
+			player.stop()
+			player = null
+			// controls = null
+		}
 	})
 
-	window.mixer = mixer
 	window.bean = bean
 	window.ports = ports
-	window.accounts = accounts
-	window.hosts = hosts
 	window.co = co
 	window.E = E
 	yield Promise.resolve()
