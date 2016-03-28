@@ -12,8 +12,8 @@ function Player(ports, speaker, opts) {
 
 	pull.events(self)
 	self.mixer = mixer()
-	self.accounts = new Map()
-	self.stations = new Map()
+	self.accounts = {}
+	self.stations = {}
 	self.speaker = speaker
 	self._paused = true
 
@@ -22,27 +22,27 @@ function Player(ports, speaker, opts) {
 
 	function addStation(station) {
 		var account = station.account, host = station.host
-		var stations = self.stations.get(station.id)
-		if(!stations) self.stations.set(station.id, stations = [])
+		var stations = self.stations[station.id]
+		if(!stations) self.stations[station.id] = stations = []
 		stations.push(station)
 		stations.sort(function(a, b) {
 			if( a.shared && !b.shared) return 1
 			if(!a.shared &&  b.shared) return -1
 			else return 0
 		})
-		var accountStations = account.stations.get(station.id)
-		if(!accountStations) account.stations.set(station.id, accountStations = [])
+		var accountStations = account.stations[station.id]
+		if(!accountStations) account.stations[station.id] = accountStations = []
 		accountStations.push(station)
-		host.stations.set(station.id, station)
+		host.stations[station.id] = station
 		self.emit('station:add', station)
 	}
 
 	function rmStation(station) {
 		var account = station.account, host = station.host
-		var stations = self.stations.get(station.id)
+		var stations = self.stations[station.id]
 		utils.array.remove(stations, station)
-		utils.array.remove(account.stations.get(station.id), station)
-		host.stations.delete(station.id)
+		utils.array.remove(account.stations[station.id], station)
+		delete host.stations[station.id]
 		if(stations.length == 0) {
 			self.mix(self.mix().filter(function(id) { return id != station.id }))
 			self.emit('station:rm', station)
@@ -55,24 +55,24 @@ function Player(ports, speaker, opts) {
 			var hostId = JSON.stringify([ meta.host, meta.port ])
 			if(op == 'add') {
 				var account
-				if(self.accounts.has(meta.account)) {
-					account = self.accounts.get(meta.account)
+				if(self.accounts[meta.account]) {
+					account = self.accounts[meta.account]
 				} else {
-					self.accounts.set(meta.account, account = {
-						hosts: new Map(),
-						stations: new Map(),
+					self.accounts[meta.account] = account = {
+						hosts: {},
+						stations: {},
 						id: meta.account,
-					})
+					}
 					self.emit('account:add', account)
 				}
-				if(account.hosts.has(hostId)) throw new Error('incorrect state (readding host)')
+				if(account.hosts[hostId]) throw new Error('incorrect state (readding host)')
 				var host = {
 					id: hostId,
 					seaport: meta,
 					account: account,
-					stations: new Map(),
+					stations: {},
 				}
-				account.hosts.set(hostId, host)
+				account.hosts[hostId] = host
 				var d = dnode()
 				var r = new Promise(function(resolve, reject) {
 					d.on('remote', function(r) {
@@ -87,20 +87,17 @@ function Player(ports, speaker, opts) {
 				function* fetchStations() {
 					var stations = yield r.stationsAsync()
 					var current = new Set()
-					utils.evalIter(host.stations.values()).map(function(s) {
-						current[s.id] = s
-						return s.id
-					}).forEach(function(s) {
-						current.add(s)
+					Object.keys(host.stations).forEach(function(id) {
+						var s = host.stations[id]
+						current[id] = s
+						current.add(id)
 					})
 					var new_ = new Set
-					stations.map(function(s) {
+					stations.forEach(function(s) {
 						new_[s.id] = s
 						s.account = account
 						s.host = host
-						return s.id
-					}).forEach(function(s) {
-						new_.add(s)
+						new_.add(s.id)
 					})
 					var added = utils.set.diff(new_, current)
 					var removed = utils.set.diff(current, new_)
@@ -118,17 +115,17 @@ function Player(ports, speaker, opts) {
 					yield fetchStations()
 				}
 			} else if(op == 'del') {
-				if(self.accounts.has(meta.account)) {
-					var account = self.accounts.get(meta.account)
+				if(self.accounts[meta.account]) {
+					var account = self.accounts[meta.account]
 					var host = account.hosts.get(hostId)
-					account.hosts.delete(hostId)
+					delete account.hosts[hostId]
 					var stations = []
 					for(var s of host.stations.values()) {
 						rmStation(s)
 					}
 					self.emit('host:rm', host)
 					if(account.hosts.size == 0) {
-						self.accounts.delete(meta.account)
+						delete self.accounts[meta.account]
 						self.emit('account:rm', account)
 					}
 				}
@@ -208,8 +205,62 @@ function Player(ports, speaker, opts) {
 		paused: function(cb) {
 			utils.cb(cb)(null, self.paused())
 		},
+		stations: function(cb) {
+			cb = utils.cb(cb)
+			co(function*() {
+				var res = {}
+				for(var id in self.stations) {
+					res[id] = self.stations[id].map(function(station) {
+						return {
+							host: station.host.id,
+							allowAddMusic: station.allowAddMusic,
+							allowDelete: station.allowDelete,
+							allowRename: station.allowRename,
+							client: station.client,
+							extended: station.extended,
+							feedback: station.feedback,
+							id: station.id,
+							name: station.name,
+							quickmix: station.quickmix,
+							shared: station.shared,
+						}
+					})
+				}
+				return stations
+			}).then(function(res) {
+				cb(null, res)
+			}).catch(function(e) {
+				cb(e)
+			})
+		},
+		hosts: function(cb) {
+			cb = utils.cb(cb)
+			co(function*() {
+				var hosts = {}
+				for(var id in self.hosts) {
+					var host = self.hosts[id]
+					hosts[id] = {
+						id: host.id,
+						account: {
+							username: host.account.id,
+							hosts: Object.keys(host.account.hosts).map(function(id) { return host.account.hosts[id] }),
+						},
+						stations: Object.keys(host.stations),
+					}
+				}
+				return hosts
+			}).then(function(res) {
+				cb(null, res)
+			}).catch(function(e) {
+				cb(e)
+			})
+		},
 	}
-	self.localInterface = self.localInterface()
+	// self.localInterface = self.localInterface()
+	self.localInterface = {}
+	for(var k in self.interface) {
+		self.localInterface[k] = Promise.promisify(self.interface[k])
+	}
 }
 
 Player.prototype.mix = function(mix) {
@@ -321,37 +372,31 @@ Player.prototype.stream = function() {
 	return pull.from.duplex(mx)
 }
 
-Player.fromStream = function() {
-	var queue = [], remote
-	function run(fn) {
-		if(remote)
-			fn()
-		else
-			queue.push(fn)
-	}
-
+Player.fromStream = Promise.promisify(co.wrap(function*(s) {
 	var mx = MuxDemux()
+	pull(s, pull.from.duplex(mx), s)
 	var d = dnode()
-	d.on('remote', function(r) {
-		remote = Promise.promisifyAll(r)
-		queue.forEach(function(fn) { fn() })
+	var remote = new Promise(function(resolve, reject) {
+		d.on('remote', function(r) {
+			resolve(r)
+		})
 	})
 	d.pipe(mx.createStream('dnode')).pipe(d)
+	remote = yield remote
 
 	var res = {
-		stream: pull.from.duplex(mx),
-		mix:    function() { var a = arguments; return new Promise(function(resolve, reject) { run(function() { remote.mixAsync   .apply(remote, a).then(resolve, reject) }) }) },
-		rate:   function() { var a = arguments; return new Promise(function(resolve, reject) { run(function() { remote.rateAsync  .apply(remote, a).then(resolve, reject) }) }) },
-		next:   function() { var a = arguments; return new Promise(function(resolve, reject) { run(function() { remote.nextAsync  .apply(remote, a).then(resolve, reject) }) }) },
-		resume: function() { var a = arguments; return new Promise(function(resolve, reject) { run(function() { remote.resumeAsync.apply(remote, a).then(resolve, reject) }) }) },
-		pause:  function() { var a = arguments; return new Promise(function(resolve, reject) { run(function() { remote.pauseAsync .apply(remote, a).then(resolve, reject) }) }) },
-		paused: function() { var a = arguments; return new Promise(function(resolve, reject) { run(function() { remote.pausedAsync.apply(remote, a).then(resolve, reject) }) }) },
+		mix:    function() { return remote.mixAsync   .apply(remote, arguments) },
+		rate:   function() { return remote.rateAsync  .apply(remote, arguments) },
+		next:   function() { return remote.nextAsync  .apply(remote, arguments) },
+		resume: function() { return remote.resumeAsync.apply(remote, arguments) },
+		pause:  function() { return remote.pauseAsync .apply(remote, arguments) },
+		paused: function() { return remote.pausedAsync.apply(remote, arguments) },
 	}
 
 	pull.events(res)
 	pull(pull.from.source(mx.createStream('events')), res.emitter)
 
 	return res
-}
+}))
 
 module.exports = Player

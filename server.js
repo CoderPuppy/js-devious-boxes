@@ -1,10 +1,12 @@
 var pull = require('./util/pull')
 var proxy = require('./util/net-proxy')
-var ports = require('seaport').connect(process.env.SEAPORT || 9090)
+var seaport = require('seaport')
+var ports = seaport.connect(process.env.SEAPORT || 9090)
 var server = require('http').createServer(require('ecstatic')({ root: __dirname + '/public' }))
 var engine = require('engine.io-stream/server')(function(s) {
 	console.log('conn')
 	s.on('end', function() { console.log('conn end') }).on('close', function() { console.log('conn close') })
+	var ports = seaport.connect(process.env.SEAPORT || 9090)
 	pull(pull.from.source(s), proxy(ports), pull.from.sink(s))
 })
 engine.attach(server, '/engine.io')

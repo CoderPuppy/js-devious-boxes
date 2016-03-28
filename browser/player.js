@@ -1,4 +1,5 @@
 var conn = require('./connection')
+var pull = require('../util/pull')
 
 module.exports = function(label) {
 	var player = new(require('../player'))(ports, require('./speaker')(), {

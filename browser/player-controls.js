@@ -56,13 +56,19 @@ function PlayerControls(player, E) {
 	self.bean.on(self.E.rating.neutral, 'change', function() { if(this.checked) co(function*() { yield self.player.rate( 0) }).catch(function(e) { console.error(e.stack) }) })
 	self.bean.on(self.E.rating.ban,     'change', function() { if(this.checked) co(function*() { yield self.player.rate(-1) }).catch(function(e) { console.error(e.stack) }) })
 
+	co(function*() {
+		console.log(yield self.player.stations())
+	}).catch(function(e) { console.error(e.stack) })
+
 	pull(self.player.on('account:add'), self.pullPause, pull.drain(function(msg) {
+		console.log('+account', msg)
 		var account = msg[1]
 		var el = self.E.mixer.accounts[account.id] = document.createElement('optgroup')
 		el.label = account.id
 		self.E.mixer.el.appendChild(el)
 	}))
 	pull(self.player.on('account:rm'), self.pullPause, pull.drain(function(msg) {
+		console.log('-account', msg)
 		var account = msg[1]
 		var el = self.E.mixer.accounts[account.id]
 		if(el && el.parentNode)
@@ -70,6 +76,7 @@ function PlayerControls(player, E) {
 		delete self.E.mixer.accounts[account.id]
 	}))
 	pull(self.player.on('station:add'), self.pullPause, pull.drain(function(msg) {
+		console.log('+station', msg)
 		var station = msg[1]
 		var el = self.E.mixer.stations[station.id] = document.createElement('option')
 		el.textContent = station.name
@@ -77,6 +84,7 @@ function PlayerControls(player, E) {
 		self.E.mixer.accounts[station.account.id].appendChild(el)
 	}))
 	pull(self.player.on('station:rm'), self.pullPause, pull.drain(function(msg) {
+		console.log('-station', msg)
 		var station = msg[1]
 		var el = self.E.mixer.stations[station.id]
 		if(el && el.parentNode)

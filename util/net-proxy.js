@@ -49,10 +49,6 @@ module.exports = function(ports) {
 		return pull.from.duplex(mx)
 	})()
 
-	function tcpClient(meta) {
-		return pull.from.duplex()
-	}
-
 	function tcpServer(meta) {
 		var mx = MuxDemux()
 
@@ -120,21 +116,27 @@ module.exports = function(ports) {
 	})
 
 	return pull(
-		pull.Through(function(read) {
-			var reads = 0
-			return function(end, cb) {
-				reads++
-					// if(reads > 1) console.trace()
-					console.trace()
-				console.log('read', reads)
-				read(end, function(err, data) {
-					if(err) console.log('conn', err)
-					reads--
-					console.log('done', reads)
-					cb(err, data)
-				})
-			}
-		})(),
+		// pull.Through(function(read) {
+		// 	var reads = 0
+		// 	return function(end, cb) {
+		// 		reads++
+		// 			// if(reads > 1) console.trace()
+		// 			// console.trace()
+		// 		// console.log('read', reads)
+		// 		read(end, function(err, data) {
+		// 			if(err) console.log('conn', err)
+		// 			reads--
+		// 			// console.log('done', reads)
+		// 			cb(err, data)
+		// 		})
+		// 	}
+		// })(),
+		pull.through(function(v) {
+			this.queue(v)
+		}, function(end) {
+			this.queue(null)
+			ports.close()
+		}),
 		pull.from.duplex(mx)
 	)
 	// return pull.from.duplex(mx)

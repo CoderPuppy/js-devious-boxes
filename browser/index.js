@@ -5,8 +5,9 @@ var dnode = require('dnode')
 var bean = require('../util/bean')
 var co = require('co')
 var Promise = require('bluebird')
-var Player = require('./player')
+var BrowserPlayer = require('./player')
 var PlayerControls = require('./player-controls')
+var Player = require('../player')
 
 var conn = require('./connection')
 var request = conn.request
@@ -65,7 +66,7 @@ require('domready')(co.wrap(function*() {
 	bean.on(E.player.enable, 'change', function() {
 		if(this.checked) {
 			E.player.label.readOnly = true
-			player = Player(E.player.label.value)
+			player = BrowserPlayer(E.player.label.value)
 			// controls = PlayerControls(player, E)
 		} else {
 			E.player.label.readOnly = false
@@ -73,6 +74,17 @@ require('domready')(co.wrap(function*() {
 			player = null
 			// controls = null
 		}
+	})
+
+	bean.on(E.player.select, 'change', function() {
+		var self = this
+		co(function*() {
+			var data = JSON.parse(self.value)
+			console.log(data)
+			var player = yield Player.fromStream(tcp.client(data[0], data[1]))
+			console.log(player)
+			controls = PlayerControls(player, E)
+		}).catch(function(err) { console.error(err.stack) })
 	})
 
 	window.bean = bean
