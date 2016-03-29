@@ -1,0 +1,63 @@
+<!doctype html>
+<title>Devious Boxes</title>
+<link rel=stylesheet href=/index.css />
+<script src=/index.js></script>
+
+<div id=player-controls>
+	<div class=header>Player Controls</div>
+	<div class=bottom>
+		<div class=col id=controls>
+			<img id=art src="http://mediaserver-cont-ch1-2-v4v6.pandora.com/images/public/amz/5/2/5/3/011661063525_500W_500H.jpg" />
+			<div class='row name'>
+				<span id=song-name></span>
+			</div>
+			<div class='row name'>
+				by <span id=artist-name></span>
+			</div>
+			<div class='row name'>
+				in <span id=album-name></span>
+			</div>
+			<div class=row>
+				<button id=ban>♻</button>
+				<button id=pause>▶</button>
+				<button id=skip>»</button>
+			</div>
+			<div class=row>
+				<input id=current-time type=range min=0 max=100>
+			</div>
+			<div class=row>
+				<input id=opinion-hate type=radio name=opinion>
+				<input id=opinion-neutral type=radio name=opinion>
+				<input id=opinion-love type=radio name=opinion>
+			</div>
+		</div>
+		<div class=col id=selectors>
+			<select id=players>
+			</select>
+			<select id=stations multiple>
+				<optgroup label="user@email.com">
+					<option>Folk 1</option>
+					<option>Folk 2</option>
+					<option>Folk 3</option>
+					<option>Folk 4</option>
+					<option>Folk 5</option>
+					<option>Folk 6</option>
+					<option>Folk 7 - from Spotify</option>
+				</optgroup>
+			</select>
+		</div>
+	</div>
+</div>
+
+<form id=account-provider>
+	<div class=header>Account Provider</div>
+	<input type=text id=email placeholder="Email">
+	<input type=password id=password placeholder="Password">
+	<button id=stst type=submit>Start</button>
+</form>
+
+<form id=player>
+	<div class=header>Player</div>
+	<input type=text id=name placeholder="Name">
+	<button id=stst type=submit>Start</button>
+</form>

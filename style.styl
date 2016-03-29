@@ -1,0 +1,154 @@
+widget()
+	border: 1px solid black
+	display: inline-block
+	border-radius: 1em
+
+	.header
+		border-radius: 1em 1em 0 0
+		width: 100%
+		display: block
+		text-align: center
+	
+#account-provider
+	widget()
+	text-align: center
+
+	&.running .header
+		background: green
+		color: black
+
+	&:not(.running) .header
+		background: red
+		color: white
+
+	input
+		display: block
+
+	#stst
+		width: 100%
+		border-radius: 0 0 1em 1em
+
+#player-controls
+	widget()
+
+	width: 32.1em
+	position: relative
+
+	.header
+		background: gray
+
+	.bottom
+		position: relative
+		background: darkgrey
+
+	.col
+		background: white
+		position: relative
+		display: inline-block
+		width: 16em
+		height: 100%
+
+	.row
+		position: relative
+		text-align: center
+
+	button
+		outline: none
+
+	#art
+		width: 16em
+		height: 16em
+		border: none
+
+	.row.name
+		text-align: right
+		padding-right: .5em
+
+	#pause
+		width: 4em
+		height: 4em
+		border-radius: 5em
+	
+	#ban, #skip
+		position: absolute
+		top: .75em
+		text-align: center
+		-webkit-appearance: none
+		padding: .25em
+		margin: 0
+		border-radius: 1em
+		font-size: 1em
+
+		width: 1.75em
+		height: 1.75em
+	
+	#ban
+		left: .5em
+
+	#skip
+		right: .5em
+
+	#current-time
+		width: 98%
+	
+	[name=opinion]
+		-webkit-appearance: none
+		font-size: 22pt
+		width: 32.2998%
+		height: 22pt
+		text-align: center
+		margin: 0
+		outline: none
+
+		&:checked
+			color: green
+
+	#opinion-hate::before
+		content: '☠'
+
+	#opinion-neutral::before
+		content: '☯'
+
+	#opinion-love::before
+		content: '♥'
+
+	#selectors.col
+		position: absolute
+		right: 0
+		height: 100%
+		width: 16em
+
+		#players
+			display: block
+			width: 100%
+			height: 1.375rem
+	
+		#stations
+			display: block
+			position: absolute
+			border-radius: 0 0 1em 0
+			width: 100%
+			top: 1.375rem
+			left: 0
+			right: 0
+			bottom: 0
+			overflow: hidden
+	
+#player
+	widget()
+	text-align: center
+
+	&.running .header
+		background: green
+		color: black
+
+	&:not(.running) .header
+		background: red
+		color: white
+
+	input
+		display: block
+
+	#stst
+		width: 100%
+		border-radius: 0 0 1em 1em
