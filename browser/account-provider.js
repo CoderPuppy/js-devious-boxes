@@ -26,8 +26,11 @@ module.exports = Promise.coroutine(function*() {
 			E.el.classList.remove('running')
 			running = false
 
-			// stop()
+			stop && stop()
+			client = null, clientInterface = null, stop = null
 		} else {
+			var email = E.email.value, password = E.password.value
+
 			E.stst.textContent = 'Stop'
 			E.el.classList.add('running')
 			E.password.value = ''
@@ -37,8 +40,9 @@ module.exports = Promise.coroutine(function*() {
 			window.client = client
 			console.log('Partner Login:', client.partner.username)
 			yield client.partnerLogin()
-			console.log('Login as', username)
-			yield client.login(E.email.value, E.password.value)
+			console.log('Logging in as', email)
+			yield client.login(email, password)
+			console.log('Logged in as', email)
 		}
 	}))
 })

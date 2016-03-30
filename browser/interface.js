@@ -1,29 +1,7 @@
 var MuxDemux = require('mux-demux')
 var xtend = require('xtend')
 var pull = require('../pull')
-
-var textToRemote = function() {
-	return pull.map(function(d) {
-		return new Buffer(d)
-	})
-}
-var textToLocal = function() {
-	return pull.map(function(d) {
-		if(d.type == 'Buffer' && Array.isArray(d.data))
-			return new Buffer(d.data)
-		else
-			return d
-	})
-}
-
-var textToLocal = function() {
-	return pull.map(function(d) {
-		if(d.type == 'Buffer' && Array.isArray(d.data))
-			return new Buffer(d.data)
-		else
-			return d
-	})
-}
+var bufser = require('../utils/buffer-serialization.js')
 
 var mx
 var queue = []
@@ -68,12 +46,28 @@ exports.crypto = function cipher(type, algo, opts) {
 		})
 
 		stream.sink.resolve(pull(
-			textToRemote(),
+			// pull.map(function(d) {
+			// 	console.log('out', new Buffer(d))
+			// 	return d
+			// }),
+			bufser.output(),
+			// pull.map(function(d) {
+			// 	console.log('out wire', d)
+			// 	return d
+			// }),
 			pull.from.sink(real)
 		))
 		stream.source.resolve(pull(
 			pull.from.source(real),
-			textToLocal()
+			// pull.map(function(d) {
+			// 	console.log('in wire', d)
+			// 	return d
+			// }),
+			bufser.input()
+			// pull.map(function(d) {
+			// 	console.log('in', new Buffer(d))
+			// 	return d
+			// })
 		))
 	})
 
@@ -99,20 +93,20 @@ exports.request = function request(uri, opts) {
 			allowHalfOpen: true
 		})
 		stream.sink.resolve(pull(
-			pull.map(function(d) {
-				console.log('b → h', d)
-				return d
-			}),
-			textToRemote(),
+			// pull.map(function(d) {
+			// 	console.log('b → h', d)
+			// 	return d
+			// }),
+			bufser.output(),
 			pull.from.sink(real)
 		))
 		stream.source.resolve(pull(
 			pull.from.source(real),
-			textToLocal(),
-			pull.map(function(d) {
-				console.log('h → b', d.toString())
-				return d
-			})
+			bufser.input()
+			// pull.map(function(d) {
+			// 	console.log('h → b', d.toString())
+			// 	return d
+			// })
 		))
 	})
 
@@ -134,12 +128,12 @@ tcp.client = function(host, port, tls) {
 			tls: !!tls,
 		})
 		stream.sink.resolve(pull(
-			textToRemote(),
+			bufser.output(),
 			pull.from.sink(real)
 		))
 		stream.source.resolve(pull(
 			pull.from.source(real),
-			textToLocal()
+			bufser.input()
 		))
 	})
 
@@ -153,12 +147,12 @@ tcp.server = function(port, seaport, cb) {
 	var mxdx = MuxDemux(function(s) {
 		cb({
 			sink: pull(
-				textToRemote(),
+				bufser.output(),
 				pull.from.sink(real)
 			),
 			source: pull(
 				pull.from.source(s),
-				textToLocal()
+				bufser.input()
 			),
 			local: s.meta.address,
 			remote: s.meta.remote,

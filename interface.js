@@ -12,13 +12,10 @@ var hyperquest = require('hyperquest')
 exports.crypto = function(type, algo, opts) {
 	var stream = (function() {
 		var iv = opts.iv
-		console.log(iv)
-		// if(opts.iv) console.log(opts.iv.type == 'Buffer', new Buffer(opts.iv.data))
 		if(iv && iv.type == 'Buffer') iv = new Buffer(iv.data)
-		console.log(iv)
 		var key = opts.key
 		if(key && key.type == 'Buffer') key = new Buffer(key.data)
-		console.log('type = [%j], algo = [%j], iv = [%j], key = [%j], opts = [%j]', type, algo, iv, key, opts)
+		// console.log('type = [%j], algo = [%j], iv = [%j], key = [%j], opts = [%j]', type, algo, iv, key, opts)
 
 		switch(type) {
 		case 'encipher':
@@ -32,8 +29,8 @@ exports.crypto = function(type, algo, opts) {
 
 					read(null, function(end, data) {
 						if(end) {
-							cb(null, cipher.final())
 							end_ = true
+							cb(null, cipher.final())
 						} else {
 							cb(null, cipher.update(data))
 						}
@@ -52,8 +49,8 @@ exports.crypto = function(type, algo, opts) {
 
 					read(null, function(end, data) {
 						if(end) {
-							cb(null, cipher.final())
 							end_ = true
+							cb(null, cipher.final())
 						} else {
 							cb(null, cipher.update(data))
 						}
@@ -83,19 +80,20 @@ exports.crypto = function(type, algo, opts) {
 		default: throw new Error('unknown op: ' + type)
 		}
 	})()
-	return pull(
-		pull.map(function(d) {
-			console.log('in', new Buffer(d))
-			console.log('in: [%s]', d.toString())
-			return d
-		}),
-		stream,
-		pull.map(function(d) {
-			console.log('out', new Buffer(d))
-			console.log('out: [%s]', d.toString())
-			return d
-		})
-	)
+	return stream
+	// return pull(
+	// 	pull.map(function(d) {
+	// 		console.log('in', new Buffer(d))
+	// 		console.log('in: [%s]', d.toString())
+	// 		return d
+	// 	}),
+	// 	stream,
+	// 	pull.map(function(d) {
+	// 		console.log('out', new Buffer(d))
+	// 		console.log('out: [%s]', d.toString())
+	// 		return d
+	// 	})
+	// )
 }
 
 var url = require('url')
@@ -105,7 +103,7 @@ function request(uri, opts) {
 	if(uri != null) opts.uri = uri
 	// if(typeof(opts.uri) == 'string') opts.uri = url.parse(opts.uri, true)
 		
-	console.log(uri, opts)
+	// console.log(uri, opts)
 
 	var s = pull.from.duplex(hyperquest(opts))
 

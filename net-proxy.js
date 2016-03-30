@@ -5,6 +5,7 @@ var net = require('net')
 var tls = require('tls')
 var seaport = require('seaport')
 var pull = require('./pull')
+var bufser = require('./utils/buffer-serialization')
 
 module.exports = function(interface) {
 	var httpStream = (function() {
@@ -14,7 +15,9 @@ module.exports = function(interface) {
 			case 'client':
 				pull(
 					pull.from.source(s),
+					bufser.input(),
 					interface.request(s.meta),
+					bufser.output(),
 					pull.from.sink(s)
 				)
 				break
@@ -35,13 +38,19 @@ module.exports = function(interface) {
 			case 'client':
 				pull(
 					pull.from.source(s),
+					bufser.input(),
 					interface.tcp.client(s.meta.host, s.meta.port, s.meta.tls),
+					bufser.output(),
 					pull.from.sink(s)
 				)
 				break
 
 			case 'server':
-				pull(pull.from.source(s), tcpServer(s.meta), pull.from.sink(s))
+				pull(
+					pull.from.source(s),
+					tcpServer(s.meta),
+					pull.from.sink(s)
+				)
 				break
 			}
 		})
@@ -54,10 +63,16 @@ module.exports = function(interface) {
 			})
 
 			function handle(s) {
-				pull(s, pull.from.duplex(mx.createStream({
-					local: s.local,
-					remote: s.remote,
-				})), s)
+				pull(
+					s,
+					bufser.input(),
+					pull.from.duplex(mx.createStream({
+						local: s.local,
+						remote: s.remote,
+					})),
+					bufser.output(),
+					s
+				)
 			}
 
 			return pull.from.duplex(mx)
@@ -69,7 +84,9 @@ module.exports = function(interface) {
 	var cryptoStream = pull.from.duplex(MuxDemux(function(s) {
 		pull(
 			pull.from.source(s),
+			bufser.input(),
 			interface.crypto(s.meta.type, s.meta.algo, s.meta),
+			bufser.output(),
 			pull.from.sink(s)
 		)
 	}))

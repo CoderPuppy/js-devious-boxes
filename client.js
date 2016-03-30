@@ -64,7 +64,7 @@ Client.prototype.encrypt = function(data) {
 	var self = this
 	return new Promise(function(resolve, reject) {
 		pull(
-			pull.values([data.toString()]),
+			pull.values([data]),
 			self.interface.crypto('encipher', 'bf-ecb', { key: self.partner.encryptPassword, iv: iv }),
 			pull.collect(function(err, d) {
 				resolve(d.map(function(d) {
@@ -85,10 +85,10 @@ Client.prototype.encrypt = function(data) {
 
 Client.prototype.decrypt = function(data) {
 	var self = this
-	data = new Buffer(data, 'hex')
+	data = new Buffer(data.toString(), 'hex')
 	return new Promise(function(resolve, reject) {
 		pull(
-			pull.values([data.toString()]),
+			pull.values([data]),
 			self.interface.crypto('decipher', 'bf-ecb', { key: self.partner.decryptPassword, iv: iv }),
 			pull.collect(function(err, d) {
 				resolve(d.map(function(d) {
@@ -118,7 +118,6 @@ Client.prototype.partnerLogin = Promise.coroutine(function*() {
 	}, {
 		encrypt: false,
 		ssl: true,
-		log: true,
 	})
 	console.log('syncTime', res.syncTime)
 	console.log('decrypted', (yield this.decrypt(res.syncTime)).toString())
@@ -280,7 +279,7 @@ Client.prototype.call = Promise.coroutine(function*(method, data, opts) {
 	})
 
 	if(opts.log)
-		console.log('got', util.inspect(res, {colors:true,depth:null}))
+		console.log('got', res)
 
 	if(res.stat != 'ok') {
 		console.log('res.code', res.code, typeof(res.code))
