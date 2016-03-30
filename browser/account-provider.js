@@ -1,7 +1,7 @@
 var Promise = require('bluebird')
 var Client = require('../client')
 var ClientInterface = require('../client-interface')
-var conn = require('./connection')
+var interface = require('./interface')
 var bean = require('bean')
 
 var $ = document.querySelector.bind(document)
@@ -17,7 +17,7 @@ module.exports = Promise.coroutine(function*() {
 
 	var running = false
 
-	var client, interface, stop
+	var client, clientInterface, stop
 
 	bean.on(E.form, 'submit', Promise.coroutine(function*(e) {
 		e.stop()
@@ -33,12 +33,12 @@ module.exports = Promise.coroutine(function*() {
 			E.password.value = ''
 			running = true
 
-			client = new Client()
-			client.request = conn.request
+			client = new Client(interface)
+			window.client = client
 			console.log('Partner Login:', client.partner.username)
 			yield client.partnerLogin()
 			console.log('Login as', username)
-			yield* client.login(E.email.value, E.password.value)
+			yield client.login(E.email.value, E.password.value)
 		}
 	}))
 })

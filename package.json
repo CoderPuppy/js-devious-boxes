@@ -7,7 +7,7 @@
 		"pull-defer": "~0.1.1",
 		"pull-through": "~1.0.17",
 
-		"bluebird": "~2.9.24",
+		"bluebird": "~3.3.4",
 
 		"domready": "~1.0.8",
 		"bean": "~1.0.15",

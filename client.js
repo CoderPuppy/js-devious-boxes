@@ -58,13 +58,14 @@ function Client(interface, partner) {
 	this.stations = []
 }
 
+var iv = new Buffer("")
+
 Client.prototype.encrypt = function(data) {
 	var self = this
-	return yield new Promise(function(resolve, reject) {
-		console.log(data.toString())
+	return new Promise(function(resolve, reject) {
 		pull(
 			pull.values([data.toString()]),
-			self.interface.crypto('cipher', 'bf-ecb', { key: self.partner.encryptPassword }),
+			self.interface.crypto('encipher', 'bf-ecb', { key: self.partner.encryptPassword, iv: iv }),
 			pull.collect(function(err, d) {
 				resolve(d.map(function(d) {
 					return new Buffer(d).toString('hex')
@@ -75,7 +76,7 @@ Client.prototype.encrypt = function(data) {
 }
 
 // Client.prototype.encrypt = Promise.coroutine(function*(data) {
-// 	var c = crypto.createCipher('bf-ecb', this.partner.encryptPassword)
+// 	var c = crypto.createCipheriv('bf-ecb', this.partner.encryptPassword, new Buffer(''))
 // 	return Buffer.concat([
 // 			c.update(data),
 // 			c.final()
@@ -84,30 +85,28 @@ Client.prototype.encrypt = function(data) {
 
 Client.prototype.decrypt = function(data) {
 	var self = this
-	console.log('decrypt', data.toString(), new Buffer(data, 'hex').toString())
 	data = new Buffer(data, 'hex')
-	return yield new Promise(function(resolve, reject) {
-		console.log(data.toString())
+	return new Promise(function(resolve, reject) {
 		pull(
 			pull.values([data.toString()]),
-			self.interface.crypto('decipher', 'bf-ecb', { key: self.partner.decryptPassword }),
+			self.interface.crypto('decipher', 'bf-ecb', { key: self.partner.decryptPassword, iv: iv }),
 			pull.collect(function(err, d) {
 				resolve(d.map(function(d) {
-					return d.toString()
+					return d.toString('utf-8')
 				}).join(''))
 			})
 		)
 	})
 }
 
-Client.prototype.decrypt = Promise.coroutine(function*(data) {
-	data = new Buffer(data, 'hex')
-	var c = crypto.createDecipher('bf-ecb', this.partner.decryptPassword)
-	return Buffer.concat([
-			c.update(data),
-			c.final()
-	]).toString('utf-8')
-})
+// Client.prototype.decrypt = Promise.coroutine(function*(data) {
+// 	data = new Buffer(data, 'hex')
+// 	var c = crypto.createDecipheriv('bf-ecb', this.partner.decryptPassword, iv)
+// 	return Buffer.concat([
+// 			c.update(data),
+// 			c.final()
+// 	]).toString('utf-8')
+// })
 
 Client.prototype.partnerLogin = Promise.coroutine(function*() {
 	var t = time()
@@ -119,8 +118,10 @@ Client.prototype.partnerLogin = Promise.coroutine(function*() {
 	}, {
 		encrypt: false,
 		ssl: true,
+		log: true,
 	})
-	console.log('syncTime', res.syncTime, (yield this.decrypt(res.syncTime)).toString())
+	console.log('syncTime', res.syncTime)
+	console.log('decrypted', (yield this.decrypt(res.syncTime)).toString())
 	var syncTime = parseInt((yield this.decrypt(res.syncTime)).slice(4).toString())
 	this.timeOffset = time() - syncTime
 	this.partnerAuthToken = res.partnerAuthToken
@@ -261,7 +262,7 @@ Client.prototype.call = Promise.coroutine(function*(method, data, opts) {
 	if(opts.encrypt)
 		data = yield this.encrypt(data)
 
-	var req = this.request(url, {method: 'POST'})
+	var req = this.interface.request(url, {method: 'POST'})
 
 	var res = yield new Promise(function(resolve, reject) {
 		pull(
@@ -271,7 +272,9 @@ Client.prototype.call = Promise.coroutine(function*(method, data, opts) {
 				if(err)
 					reject(err)
 				else
-					resolve(JSON.parse(data.join('')))
+					resolve(JSON.parse(data.map(function(d) {
+						return d.toString()
+					}).join('')))
 			})
 		)
 	})
