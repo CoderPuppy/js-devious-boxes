@@ -9,6 +9,9 @@ window.pull = require('../pull')
 window.bean = bean
 window.Promise = Promise
 window.Buffer = Buffer
+window.process = process
+window.rc = require('../rc')
+window.debug = require('../debug')
 
 require('domready')(Promise.coroutine(function*() {
 	yield require('./account-provider')()

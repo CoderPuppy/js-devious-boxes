@@ -2,10 +2,17 @@ var MuxDemux = require('mux-demux')
 var xtend = require('xtend')
 var pull = require('../pull')
 var bufser = require('../utils/buffer-serialization.js')
+var debug = require('../debug').sub('interface')
+debug.crypto = debug.sub('crypto')
+debug.tcp = debug.sub('tcp')
+debug.http = debug.sub('http')
 
 var mx
 var queue = []
-require('reconnect-engine')(function(stream) {
+var services = new Set()
+var re = require('reconnect-ws')()
+re.on('connect', function(s) {
+	debug('connected')
 	mx = MuxDemux()
 	mx.http = MuxDemux()
 	mx.http.pipe(mx.createStream('http')).pipe(mx.http)
@@ -13,15 +20,29 @@ require('reconnect-engine')(function(stream) {
 	mx.tcp.pipe(mx.createStream('net')).pipe(mx.tcp)
 	mx.crypto = MuxDemux()
 	mx.crypto.pipe(mx.createStream('crypto')).pipe(mx.crypto)
-	mx.pipe(stream).pipe(mx)
+	mx.pipe(s).pipe(mx)
 	queue.forEach(function(req) {
 		req()
 	})
 	queue = []
-	console.log('Connected')
-}).on('disconnect', function() {
+	services.forEach(function(service) {
+		service._start()
+	})
+})
+re.on('disconnect', function() {
+	debug('disconnected')
 	mx = null
-}).connect('/engine.io')
+	services.forEach(function(service) {
+		service._stop()
+	})
+})
+re.on('error', debug.bind(null, 'error'))
+re.connect('ws://' + location.host)
+
+exports.re = re
+exports.mx = mx
+exports.queue = queue
+exports.services = services
 
 function run(job) {
 	if(mx)
@@ -30,6 +51,43 @@ function run(job) {
 		queue.push(job)
 }
 exports.run = run
+
+function service(start) {
+	var service = {
+		up: false,
+		enabled: false,
+		startCb: start,
+
+		start: Promise.coroutine(function*() {
+			service.enabled = true
+			services.add(service)
+			yield service._start()
+		}),
+
+		_start: Promise.coroutine(function*() {
+			if(service.up) return
+			if(!mx) return
+			service.up = true
+			service.stopCb = yield service.startCb()
+		}),
+
+		stop: Promise.coroutine(function*() {
+			service.enabled = false
+			services.delete(service)
+			yield service._stop()
+		}),
+
+		_stop: Promise.coroutine(function*() {
+			if(!service.up) return
+			service.up = false
+			yield service.stopCb()
+			service.stopCb = null
+		}),
+	}
+	services.add(service)
+	return service
+}
+exports.service = service
 
 exports.crypto = function cipher(type, algo, opts) {
 	var stream = {
@@ -47,12 +105,12 @@ exports.crypto = function cipher(type, algo, opts) {
 
 		stream.sink.resolve(pull(
 			// pull.map(function(d) {
-			// 	console.log('out', new Buffer(d))
+			// 	debug.crypto('out', new Buffer(d))
 			// 	return d
 			// }),
 			bufser.output(),
 			// pull.map(function(d) {
-			// 	console.log('out wire', d)
+			// 	debug.crypto('out wire', d)
 			// 	return d
 			// }),
 			pull.from.sink(real)
@@ -60,12 +118,12 @@ exports.crypto = function cipher(type, algo, opts) {
 		stream.source.resolve(pull(
 			pull.from.source(real),
 			// pull.map(function(d) {
-			// 	console.log('in wire', d)
+			// 	debug.crypto('in wire', d)
 			// 	return d
 			// }),
 			bufser.input()
 			// pull.map(function(d) {
-			// 	console.log('in', new Buffer(d))
+			// 	debug.crypto('in', new Buffer(d))
 			// 	return d
 			// })
 		))
@@ -94,7 +152,7 @@ exports.request = function request(uri, opts) {
 		})
 		stream.sink.resolve(pull(
 			// pull.map(function(d) {
-			// 	console.log('b → h', d)
+			// 	debug.http('b → h', d)
 			// 	return d
 			// }),
 			bufser.output(),
@@ -104,7 +162,7 @@ exports.request = function request(uri, opts) {
 			pull.from.source(real),
 			bufser.input()
 			// pull.map(function(d) {
-			// 	console.log('h → b', d.toString())
+			// 	debug.http('h → b', d.toString())
 			// 	return d
 			// })
 		))
@@ -139,38 +197,73 @@ tcp.client = function(host, port, tls) {
 
 	return stream
 }
-tcp.server = function(port, seaport, cb) {
-	if(typeof(seaport) == 'function') cb = seaport, seaport = undefined
+tcp.server = function(port, seaport, isTLS, cb) {
 	if(typeof(port) == 'string' || typeof(port) == 'object') {
-		var t = seaport; seaport = port, port = t
+		cb = isTLS, isTLS = seaport, seaport = port, port = undefined
 	}
-	var mxdx = MuxDemux(function(s) {
-		cb({
-			sink: pull(
-				bufser.output(),
-				pull.from.sink(real)
-			),
-			source: pull(
-				pull.from.source(s),
-				bufser.input()
-			),
-			local: s.meta.address,
-			remote: s.meta.remote,
-		})
-	})
+	if(typeof(seaport) != 'string' && typeof(seaport) != 'object') {
+		cb = isTLS, isTLS = seaport, seaport = undefined
+	}
+	if(typeof(isTLS) != 'boolean') {
+		cb = isTLS, isTLS = undefined
+	}
 
-	run(function() {
+	var ser = service(Promise.coroutine(function*() {
+		debug.tcp('starting server', port, seaport, isTLS)
+		var resolve
+		var p = new Promise(function() {
+			resolve = arguments[0]
+		})
+		var data
+
+		var mxdx = MuxDemux(function(s) {
+			switch(s.meta.type) {
+			case 'client':
+				cb({
+					sink: pull(
+						bufser.output(),
+						pull.from.sink(s)
+					),
+					source: pull(
+						pull.from.source(s),
+						bufser.input()
+					),
+					local: s.meta.local,
+					remote: s.meta.remote,
+				})
+				break
+
+			case 'signal':
+				data = s.meta
+				ser.service = data.service
+				
+				resolve()
+				break
+
+			default:
+				debug.tcp('unknown stream type:', s.meta.type)
+			}
+		})
+
 		mxdx.pipe(mx.tcp.createStream({
 			type: 'server',
 			listen: xtend(seaport, {
 				port: port || seaport.port,
 				role: seaport.role || seaport,
 			}),
+			tls: isTLS,
 		})).pipe(mxdx)
-	})
-	return function() {
-		mxdx.end()
-	}
+
+		yield p
+		debug.tcp('listening ' + ser.service.host + ':' + ser.service.port)
+		
+		return function() {
+			debug.tcp('[connection] [tcp.server] stopping server ' + ser.service.host + ':' + ser.service.port)
+			mxdx.close()
+			return Promise.resolve()
+		}
+	}))
+	return ser
 }
 
 var ports = exports.ports = exports.seaport = require('seaport')()

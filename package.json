@@ -14,11 +14,11 @@
 
 		"hyperquest": "~1.2.0",
 		"seaport": "~2.0.9",
-		"engine.io-stream": "~0.4.3",
+		"websocket-stream": "~3.1.0",
+		"reconnect-ws": "~0.1.0",
 		"dnode": "~1.2.0",
 		"dnode-promise": "~3.0.1",
 		"ecstatic": "~0.7.3",
-		"reconnect-engine": "~0.1.0",
 		"xtend": "~4.0.0",
 		"mux-demux": "~3.7.9"
 	},

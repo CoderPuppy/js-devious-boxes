@@ -1,13 +1,17 @@
 widget()
-	border: 1px solid black
+	border: 4px outset hsl(0, 0%, 58%)
 	display: inline-block
 	border-radius: 1em
+	margin-bottom: 1em
+	overflow: hidden
 
 	.header
-		border-radius: 1em 1em 0 0
 		width: 100%
 		display: block
 		text-align: center
+		background: grey
+		color: white
+		text-shadow: 0 0 10px white
 	
 #account-provider
 	widget()
@@ -15,11 +19,9 @@ widget()
 
 	&.running .header
 		background: green
-		color: black
 
 	&:not(.running) .header
 		background: red
-		color: white
 
 	input
 		display: block
@@ -33,9 +35,6 @@ widget()
 
 	width: 32.1em
 	position: relative
-
-	.header
-		background: gray
 
 	.bottom
 		position: relative
@@ -126,7 +125,6 @@ widget()
 		#stations
 			display: block
 			position: absolute
-			border-radius: 0 0 1em 0
 			width: 100%
 			top: 1.375rem
 			left: 0
@@ -140,11 +138,9 @@ widget()
 
 	&.running .header
 		background: green
-		color: black
 
 	&:not(.running) .header
 		background: red
-		color: white
 
 	input
 		display: block

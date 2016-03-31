@@ -6,6 +6,7 @@ var tls = require('tls')
 var seaport = require('seaport')
 var pull = require('./pull')
 var bufser = require('./utils/buffer-serialization')
+var Promise = require('bluebird')
 
 module.exports = function(interface) {
 	var httpStream = (function() {
@@ -32,7 +33,7 @@ module.exports = function(interface) {
 	})()
 
 	var tcpStream = (function() {
-		var mx = MuxDemux(function(s) {
+		var mx = MuxDemux(Promise.coroutine(function*(s) {
 			if(!s.meta) return
 			switch(s.meta.type) {
 			case 'client':
@@ -48,35 +49,46 @@ module.exports = function(interface) {
 			case 'server':
 				pull(
 					pull.from.source(s),
-					tcpServer(s.meta),
+					yield tcpServer(s.meta),
 					pull.from.sink(s)
 				)
 				break
 			}
-		})
+		}))
 
-		function tcpServer(meta) {
+		tcpServer = Promise.coroutine(function*(meta) {
 			var mx = MuxDemux()
-
-			mx.on('end', function() {
-				console.log('server closed')
-			})
 
 			function handle(s) {
 				pull(
 					s,
-					bufser.input(),
+					bufser.output(),
 					pull.from.duplex(mx.createStream({
+						type: 'client',
 						local: s.local,
 						remote: s.remote,
 					})),
-					bufser.output(),
+					bufser.input(),
 					s
 				)
 			}
 
+			var server = interface.tcp.server(meta.listen, meta.tls || false, handle)
+			yield server.start()
+
+			var signal
+			process.nextTick(function() {
+				signal = mx.createStream({ type: 'signal', service: server.service })
+			})
+
+			mx.on('end', function() {
+				server.stop()
+				if(server.service)
+					interface.ports.free(server.service)
+			})
+
 			return pull.from.duplex(mx)
-		}
+		})
 
 		return pull.from.duplex(mx)
 	})()
@@ -106,24 +118,12 @@ module.exports = function(interface) {
 			break
 
 		case 'seaport':
-			if(interface.ports) {
-				s.pipe(interface.ports.createStream('remote')).pipe(s)
-			} else {
-				console.warn('seaport requested')
-			}
+			s.pipe(interface.ports.createStream('remote')).pipe(s)
 			break
 
 			// TODO: tls, https?
 		}
 	})
 
-	return pull(
-		pull.through(function(v) {
-			this.queue(v)
-		}, function(end) {
-			this.queue(null)
-			interface.ports.close()
-		}),
-		pull.from.duplex(mx)
-	)
+	return pull.from.duplex(mx)
 }

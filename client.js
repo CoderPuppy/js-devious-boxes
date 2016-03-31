@@ -5,6 +5,7 @@ var crypto = require('crypto')
 var util = require('util')
 var Stream = require('stream')
 var utils = require('./utils')
+var debug = require('./debug').sub('client')
 
 function hexDecode(data) {
 	return new Buffer(data, 'hex').binarySlice()
@@ -119,8 +120,9 @@ Client.prototype.partnerLogin = Promise.coroutine(function*() {
 		encrypt: false,
 		ssl: true,
 	})
-	console.log('syncTime', res.syncTime)
-	console.log('decrypted', (yield this.decrypt(res.syncTime)).toString())
+	var debug_ = debug.sub('partnerLogin')
+	debug_(debug_('syncTime =', res.syncTime))
+	debug_('decrypted', (yield this.decrypt(res.syncTime)).toString())
 	var syncTime = parseInt((yield this.decrypt(res.syncTime)).slice(4).toString())
 	this.timeOffset = time() - syncTime
 	this.partnerAuthToken = res.partnerAuthToken
@@ -180,7 +182,7 @@ Client.prototype.loadStations = Promise.coroutine(function*(stations) {
 Client.prototype.rateSong = Promise.coroutine(function*(station, song, rating) {
 	station = utils.id(station)
 	song = utils.id(song)
-	// console.log('rating %s as %s in %s', song, rating, station)
+	debug('rating', song, 'as', rating, 'in', station)
 	var stationR = this.stations[station]
 	if(!stationR) throw new Error('no station: ' + station)
 	if(rating == 0) {
@@ -196,7 +198,6 @@ Client.prototype.rateSong = Promise.coroutine(function*(station, song, rating) {
 			isPositive: rating > 0,
 		})
 		stationR.feedback[song] = res
-		console.log(res)
 	}
 })
 
@@ -211,7 +212,7 @@ Client.prototype.getCache = Promise.coroutine(function*(station) {
 		}, {
 			ssl: true,
 		})
-		// console.log(res.items)
+		debug('new playlist =', res.items)
 		return this.caches[station] = res.items//.filter(function(s) { return s.songName })
 	}
 	return cache
@@ -234,6 +235,8 @@ Client.prototype.pullSong = Promise.coroutine(function*(station) {
 
 Client.prototype.call = Promise.coroutine(function*(method, data, opts) {
 	var self = this
+		
+	var debug_ = debug.sub(method)
 
 	if(!opts || typeof(opts) != 'object') opts = {}
 	if(typeof(opts.encrypt) != 'boolean') opts.encrypt = true
@@ -252,8 +255,7 @@ Client.prototype.call = Promise.coroutine(function*(method, data, opts) {
 		url += '&auth_token=' + encodeURIComponent('' + this.userAuthToken)
 	}
 
-	if(opts.log)
-		console.log('sending', method, util.inspect(data, {colors:true,depth:null}), 'to', url)
+	debug_('sending', method, data, 'to', url)
 
 	var origData = data
 
@@ -278,20 +280,18 @@ Client.prototype.call = Promise.coroutine(function*(method, data, opts) {
 		)
 	})
 
-	if(opts.log)
-		console.log('got', res)
+	debug_('got', res)
 
 	if(res.stat != 'ok') {
-		console.log('res.code', res.code, typeof(res.code))
+		debug_('res.code', res.code)
 		if(res.code == 1001) {
-			console.log('logging back in')
+			debug('logging back in')
 			this.partnered = false
 			this.loggedIn = false
 			yield this.partnerLogin()
 			yield this.login(this.username, this.userPassword)
 			return yield this.call(method, origData, opts)
 		}
-		// console.log('pandora error:', res.code, origData)
 		throw new Error('Pandora error: ' + res.code)
 	}
 

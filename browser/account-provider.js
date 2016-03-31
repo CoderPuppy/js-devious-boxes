@@ -3,6 +3,8 @@ var Client = require('../client')
 var ClientInterface = require('../client-interface')
 var interface = require('./interface')
 var bean = require('bean')
+var dnode = require('../dnode')
+var debug = require('../debug').sub('account-provider')
 
 var $ = document.querySelector.bind(document)
 
@@ -17,7 +19,7 @@ module.exports = Promise.coroutine(function*() {
 
 	var running = false
 
-	var client, clientInterface, stop
+	var client, service
 
 	bean.on(E.form, 'submit', Promise.coroutine(function*(e) {
 		e.stop()
@@ -26,8 +28,8 @@ module.exports = Promise.coroutine(function*() {
 			E.el.classList.remove('running')
 			running = false
 
-			stop && stop()
-			client = null, clientInterface = null, stop = null
+			if(service) yield service.stop()
+			client = null, service = null
 		} else {
 			var email = E.email.value, password = E.password.value
 
@@ -38,11 +40,23 @@ module.exports = Promise.coroutine(function*() {
 
 			client = new Client(interface)
 			window.client = client
-			console.log('Partner Login:', client.partner.username)
-			yield client.partnerLogin()
-			console.log('Logging in as', email)
-			yield client.login(email, password)
-			console.log('Logged in as', email)
+			debug('partner login:', client.partner.username)
+			// yield client.partnerLogin()
+			// debug('logging in as', email)
+			// yield client.login(email, password)
+			// password = null
+			// debug('logged in as', email)
+			var clientInterface = ClientInterface(client)
+			service = interface.tcp.server({
+				role: 'devious-boxes:music-provider',
+				accountId: 'pandora:' + email,
+				name: 'Pandora: ' + email,
+			}, function(s) {
+				var d = dnode(clientInterface)
+				pull(s, d, s)
+			})
+			yield service.start()
+			debug('serving', email)
 		}
 	}))
 })
