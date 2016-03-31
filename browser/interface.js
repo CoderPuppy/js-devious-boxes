@@ -207,9 +207,14 @@ tcp.server = function(port, seaport, isTLS, cb) {
 	if(typeof(isTLS) != 'boolean') {
 		cb = isTLS, isTLS = undefined
 	}
+	
+	var seaport_ = xtend(seaport, {
+		port: port || seaport.port,
+		role: seaport.role || seaport,
+	})
 
 	var ser = service(Promise.coroutine(function*() {
-		debug.tcp('starting server', port, seaport, isTLS)
+		debug.tcp('starting server', seaport_, isTLS)
 		var resolve
 		var p = new Promise(function() {
 			resolve = arguments[0]
@@ -247,10 +252,7 @@ tcp.server = function(port, seaport, isTLS, cb) {
 
 		mxdx.pipe(mx.tcp.createStream({
 			type: 'server',
-			listen: xtend(seaport, {
-				port: port || seaport.port,
-				role: seaport.role || seaport,
-			}),
+			listen: seaport_,
 			tls: isTLS,
 		})).pipe(mxdx)
 

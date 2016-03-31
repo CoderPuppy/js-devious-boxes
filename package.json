@@ -6,6 +6,7 @@
 		"stream-to-pull-stream": "~1.6.1",
 		"pull-defer": "~0.1.1",
 		"pull-through": "~1.0.17",
+		"pull-pushable": "~1.1.4",
 
 		"bluebird": "~3.3.4",
 
@@ -20,12 +21,16 @@
 		"dnode-promise": "~3.0.1",
 		"ecstatic": "~0.7.3",
 		"xtend": "~4.0.0",
-		"mux-demux": "~3.7.9"
+		"mux-demux": "~3.7.9",
+		"semver": "~4.3.3"
 	},
 	"devDependencies": {
 		"browserify": "~13.0.0",
 		"watchify": "~3.7.0",
 		"stylus": "~0.54.2"
+	},
+	"browser": {
+		"./interface.js": "./browser/interface.js"
 	},
 	"scripts": {
 		"start": "node --harmony server.js",

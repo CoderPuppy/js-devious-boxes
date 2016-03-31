@@ -4,7 +4,7 @@ var ClientInterface = require('../client-interface')
 var interface = require('./interface')
 var bean = require('bean')
 var dnode = require('../dnode')
-var debug = require('../debug').sub('account-provider')
+var debug = require('../debug').sub('ui', 'account-provider')
 
 var $ = document.querySelector.bind(document)
 
@@ -41,15 +41,15 @@ module.exports = Promise.coroutine(function*() {
 			client = new Client(interface)
 			window.client = client
 			debug('partner login:', client.partner.username)
-			// yield client.partnerLogin()
-			// debug('logging in as', email)
-			// yield client.login(email, password)
-			// password = null
-			// debug('logged in as', email)
+			yield client.partnerLogin()
+			debug('logging in as', email)
+			yield client.login(email, password)
+			password = null
+			debug('logged in as', email)
 			var clientInterface = ClientInterface(client)
 			service = interface.tcp.server({
-				role: 'devious-boxes:music-provider',
-				accountId: 'pandora:' + email,
+				role: 'devious-boxes:music-source',
+				sourceId: 'pandora:' + email,
 				name: 'Pandora: ' + email,
 			}, function(s) {
 				var d = dnode(clientInterface)

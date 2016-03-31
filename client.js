@@ -15,7 +15,7 @@ function time() {
 	return Math.floor(Date.now() / 1000)
 }
 
-function Station(client, s, extended) {
+function Station(client, s) {
 	var self = this
 	self.client = client
 	self.name = s.stationName
@@ -26,16 +26,6 @@ function Station(client, s, extended) {
 	self.allowDelete = s.allowDelete
 	self.shared = s.isShared
 	self.quickmix = s.isQuickMix
-	self.feedback = {}
-	if(extended.feedback) {
-		extended.feedback.thumbsUp.forEach(function(song) {
-			self.feedback[song.songIdentity] = song
-		})
-		extended.feedback.thumbsDown.forEach(function(song) {
-			self.feedback[song.songIdentity] = song
-		})
-	}
-	self.extended = extended
 }
 
 Station.prototype.cache = Promise.coroutine(function*(fetch) {
@@ -57,6 +47,7 @@ function Client(interface, partner) {
 	this.caches = {}
 	this.places = {}
 	this.stations = []
+	this.lastStationsUpdate = 0
 }
 
 var iv = new Buffer("")
@@ -121,9 +112,8 @@ Client.prototype.partnerLogin = Promise.coroutine(function*() {
 		ssl: true,
 	})
 	var debug_ = debug.sub('partnerLogin')
-	debug_(debug_('syncTime =', res.syncTime))
-	debug_('decrypted', (yield this.decrypt(res.syncTime)).toString())
-	var syncTime = parseInt((yield this.decrypt(res.syncTime)).slice(4).toString())
+	
+	var syncTime = parseInt(debug_('decrypted', yield this.decrypt(debug_('syncTime =', res.syncTime))).slice(4).toString())
 	this.timeOffset = time() - syncTime
 	this.partnerAuthToken = res.partnerAuthToken
 	this.partnerID = res.partnerId
@@ -157,23 +147,28 @@ Client.prototype.login = Promise.coroutine(function*(username, password) {
 	this.userID = res.userId
 	this.userAuthToken = res.userAuthToken
 	this.loggedIn = true
-	yield this.loadStations(res.stationListResult.stations)
+	debug('logged in', res)
+	yield this.loadStations(res.stationListResult)
 })
 
 Client.prototype.fetchStations = Promise.coroutine(function*() {
+	
+	var res = yield this.call('user.getStationListChecksum', {})
+	if(res.checksum == this.stationsChecksum) {
+		this.lastStationsUpdate = Date.now()
+		return
+	}
 	var res = yield this.call('user.getStationList', {})
-	this.loadStations(res.stations)
+	this.loadStations(res)
 })
 
-Client.prototype.loadStations = Promise.coroutine(function*(stations) {
+Client.prototype.loadStations = Promise.coroutine(function*(res) {
 	var self = this
-	this.stations = yield Promise.all(stations.map(Promise.coroutine(function*(station) {
-		var extended = yield self.call('station.getStation', {
-			stationToken: station.stationToken,
-			includeExtendedAttributes: true,
-		})
-		return new Station(self, station, extended)
-	})))
+	this.lastStationsUpdate = Date.now()
+	this.stationsChecksum = res.checksum
+	this.stations = res.stations.map(function(station) {
+		return new Station(self, station)
+	})
 	this.stations.forEach(function(station) {
 		self.stations[station.id] = station
 	})
@@ -186,18 +181,20 @@ Client.prototype.rateSong = Promise.coroutine(function*(station, song, rating) {
 	var stationR = this.stations[station]
 	if(!stationR) throw new Error('no station: ' + station)
 	if(rating == 0) {
-		var feedback = stationR.feedback[song]
-		if(feedback)
-			yield this.call('station.deleteFeedback', {
-				feedbackId: feedback.feedbackId,
-			})
-	} else {
 		var res = yield this.call('station.addFeedback', {
+			stationToken: station,
+			trackToken: song,
+			isPositive: true,
+		})
+		yield this.call('station.deleteFeedback', {
+			feedbackId: res.feedbackId,
+		})
+	} else {
+		yield this.call('station.addFeedback', {
 			stationToken: station,
 			trackToken: song,
 			isPositive: rating > 0,
 		})
-		stationR.feedback[song] = res
 	}
 })
 

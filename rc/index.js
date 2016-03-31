@@ -1,25 +1,30 @@
-function generate(namespace) {
+var cache = {}
+
+function generate(namespace, parent) {
+	var namespacePath = (parent ? parent.namespacePath : []).concat([namespace])
+	var key = namespacePath.join('/')
+	if(cache[key]) return cache[key]
+
 	function rc(key) {
 		for(var i = 0; i < exports.lookups.length; i++) {
 			var val = exports.lookups[i](rc, key)
-			if(val) return val
+			if(val !== undefined) return val
 		}
 	}
+
+	cache[key] = rc
 
 	rc.set = function(key, value) {
 		return exports.lookups[0](rc, key, value)
 	}
 
+	if(parent) rc.parent = parent
 	rc.namespace = namespace
-	rc.namespacePath = [namespace]
+	rc.namespacePath = namespacePath
 	rc.sub = function() {
 		var cur = rc
-		for(var i = 0; i < arguments.length; i++) {
-			var sub = generate(arguments[i])
-			sub.parent = cur
-			sub.namespacePath = cur.namespacePath.concat([sub.namespace])
-			cur = sub
-		}
+		for(var i = 0; i < arguments.length; i++)
+			cur = generate(arguments[i], cur)
 		return cur
 	}
 

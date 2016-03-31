@@ -11,15 +11,15 @@ function generate(rcl, explicit) {
 
 		function debug(a1, a2) {
 			var allowed = false
+			var first = true
 			var rcc = rcl
-			var name
+			var i = 0
 			while(rcc) {
-				name = rcc.namespacePath.join('/')
-
+				var name = i == 0 ? '' : rcl.namespacePath.slice(-i).join('/')
 				var part = (rcc('debug') || '').split(',').reverse().find(function(part) {
 					if(!part) return false
 
-					if(part[0] == '-') part = part.slice(1)
+					if(part[0] == '-' || part[0] == '+') part = part.slice(1)
 
 					for(var i = 0; i < part.length; i++) {
 						if(part[i] != name[i] && (part[i] != '*' || i + 1 != part.length))
@@ -28,13 +28,18 @@ function generate(rcl, explicit) {
 
 					return true
 				})
-				if(part)
+				if(part) {
 					if(part[0] == '-')
 						allowed = false
-					else
+					else if(part[0] == '+')
 						allowed = true
+					else if(first)
+						allowed = true
+					first = false
+				}
 
 				rcc = rcc.parent
+				i++
 			}
 
 			if(allowed)
@@ -45,6 +50,7 @@ function generate(rcl, explicit) {
 
 		debug.rc = rcl
 		debug.namespace = rcl.namespace
+		debug.namespacePath = rcl.namespacePath
 		if(rcl.parent) debug.parent = generate(rcl.parent, false)
 		debug.sub = function() {
 			return generate(rcl.sub.apply(rcl, arguments), true)
