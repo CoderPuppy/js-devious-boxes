@@ -7,6 +7,7 @@ var seaport = require('seaport')
 var pull = require('./pull')
 var bufser = require('./utils/buffer-serialization')
 var Promise = require('bluebird')
+var debug = require('./debug').sub('net-proxy')
 
 module.exports = function(interface) {
 	var httpStream = (function() {
@@ -57,6 +58,7 @@ module.exports = function(interface) {
 		}))
 
 		tcpServer = Promise.coroutine(function*(meta) {
+			debug('starting server', meta)
 			var mx = MuxDemux()
 
 			function handle(s) {
@@ -75,17 +77,25 @@ module.exports = function(interface) {
 
 			var server = interface.tcp.server(meta.listen, meta.tls || false, handle)
 			yield server.start()
+			debug('server started', server.service || server.address(), meta)
 
 			var signal
 			process.nextTick(function() {
 				signal = mx.createStream({ type: 'signal', service: server.service })
 			})
 
-			mx.on('end', function() {
+			var stopped = false
+			function stop() {
+				if(stopped) return
+				stopped = true
+				debug('stopping server', server.service || server.address())
 				server.stop()
 				if(server.service)
 					interface.ports.free(server.service)
-			})
+			}
+
+			mx.on('end', stop)
+			mx.on('close', stop)
 
 			return pull.from.duplex(mx)
 		})

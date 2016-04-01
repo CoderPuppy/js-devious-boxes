@@ -1,9 +1,10 @@
 var Promise = require('bluebird')
 var pull = require('./pull')
-var debug = require('./debug').sub('player')
 var dnode = require('./dnode')
-var events = require('./utils/events')
 var utils = require('./utils')
+
+var debug = require('./debug').sub('player')
+debug.stations = debug.sub('stations')
 
 function goe(reg, id, def) {
 	var obj = reg[id]
@@ -14,7 +15,7 @@ function goe(reg, id, def) {
 function Player(interface) {
 	var self = this
 
-	events(self)
+	pull.events(self)
 
 	self.interface = interface
 	self.sources = {}
@@ -40,10 +41,10 @@ function Player(interface) {
 			else return 0
 		})
 
-		debug('new station host', station)
+		debug.stations('new station host', station)
 		self.emit('station:host:add', station)
 		if(stations.length == 1) {
-			debug('new station', station)
+			debug.stations('new station', station)
 			self.emit('station:add', station.id, station)
 		}
 	}
@@ -57,14 +58,14 @@ function Player(interface) {
 		utils.array.remove(srcStations, station)
 		delete host.stations[station.id]
 
-		debug('removing station host', station)
+		debug.stations('removing station host', station)
 		self.emit('station:host:rm', station)
 
 		if(srcStations.length == 0)
 			delete self.srcStations[station.id]
 		if(stations.length == 0) {
 			delete self.stations[station.id]
-			debug('removing station', station)
+			debug.stations('removing station', station)
 			self.emit('station:rm', station.id, station)
 		}
 	}
@@ -96,7 +97,8 @@ function Player(interface) {
 			self.emit('host:add', host)
 
 			host.dnode = dnode()
-			pull(host.dnode, interface.tcp.client(meta.host, meta.port), host.dnode)
+			host.kill = pull.kill(host.dnode)
+			pull(host.kill, interface.tcp.client(meta.host, meta.port), host.kill)
 
 			debug('connecting to ' + meta.host + ':' + meta.port)
 
@@ -107,7 +109,7 @@ function Player(interface) {
 			var refreshStations = Promise.coroutine(function*() {
 				debug('refreshing stations on', host.id, host.source.id)
 				var stations = yield host.remote.stations()
-				debug('got stations from', host.id, host.source.id, stations)
+				debug.stations('got stations from', host.id, host.source.id, stations)
 
 				var current = new Set()
 				for(var id in host.stations) {
@@ -126,8 +128,8 @@ function Player(interface) {
 				var added = utils.set.diff(new_, current)
 				var removed = utils.set.diff(current, new_)
 
-				debug('new stations on', host.id, host.source.id, added)
-				debug('removed stations on', host.id, host.source.id, removed)
+				debug.stations('new stations on', host.id, host.source.id, added)
+				debug.stations('removed stations on', host.id, host.source.id, removed)
 
 				added.forEach(function(id) { addStation(new_[id]) })
 				removed.forEach(function(id) { rmStation(current[id]) })
@@ -136,7 +138,6 @@ function Player(interface) {
 			})
 
 			yield refreshStations()
-
 			break
 
 		case 'del':
@@ -159,12 +160,24 @@ function Player(interface) {
 				rmStation(host.stations[id])
 			}
 
+			host.kill.kill()
+
 			break
 
 		default:
-			debug('invalid operand:', d[0], d)
+			debug('invalid operator:', d[0], d)
 		}
 	})))
+}
+
+Player.prototype.stop = function() {
+	var self = this
+	for(var id in self.hosts) {
+		var host = self.hosts[id]
+		host.kill.kill()
+		if(host.stationRefreshTimerId)
+			clearTimeout(host.stationRefreshTimerId)
+	}
 }
 
 module.exports = Player

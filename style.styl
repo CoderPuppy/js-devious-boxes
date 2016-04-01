@@ -148,3 +148,20 @@ widget()
 	#stst
 		width: 100%
 		border-radius: 0 0 1em 1em
+	
+#test-provider
+	widget()
+	text-align: center
+
+	&.running .header
+		background: green
+
+	&:not(.running) .header
+		background: red
+
+	input
+		display: block
+
+	#stst
+		width: 100%
+		border-radius: 0 0 1em 1em

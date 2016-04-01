@@ -37,6 +37,8 @@ exports = module.exports = generate('rc')
 exports.namespace = ''
 exports.namespacePath = []
 
+exports.generate = generate
+
 exports.ser = require('./ser')
 exports.defaults = require('./defaults')
 

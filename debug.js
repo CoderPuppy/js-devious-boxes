@@ -68,3 +68,4 @@ function generate(rcl, explicit) {
 
 exports = module.exports = generate(rc)
 exports.explicits = explicits
+exports.generate = generate

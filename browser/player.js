@@ -1,8 +1,10 @@
 var Promise = require('bluebird')
 var bean = require('bean')
 var Player = require('../player')
+var PlayerInterface = require('../player-interface')
 var interface = require('./interface')
 var debug = require('../debug').sub('ui', 'player')
+var dnode = require('../dnode')
 
 var $ = document.querySelector.bind(document)
 
@@ -25,6 +27,7 @@ module.exports = Promise.coroutine(function*() {
 			E.el.classList.remove('running')
 			running = false
 
+			if(player) player.stop()
 			if(service) yield service.stop()
 			player = null, service = null
 		} else {
@@ -37,17 +40,16 @@ module.exports = Promise.coroutine(function*() {
 			player = new Player(interface)
 			window.player = player
 			debug('starting as', name)
-			// var playerInterface = ClientInterface(player)
-			// service = interface.tcp.server({
-			// 	role: 'devious-boxes:music-provider',
-			// 	accountId: 'pandora:' + email,
-			// 	name: 'Pandora: ' + email,
-			// }, function(s) {
-			// 	var d = dnode(playerInterface)
-			// 	pull(s, d, s)
-			// })
-			// yield service.start()
-			// debug('serving', email)
+			var playerInterface = PlayerInterface(player)
+			service = interface.tcp.server({
+				role: 'devious-boxes:player',
+				name: name,
+			}, function(s) {
+				var d = dnode(playerInterface)
+				pull(s, d, s)
+			})
+			yield service.start()
+			debug('serving', name)
 		}
 	}))
 })

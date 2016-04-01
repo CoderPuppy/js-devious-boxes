@@ -15,6 +15,7 @@ window.debug = require('../debug')
 
 require('domready')(Promise.coroutine(function*() {
 	yield require('./account-provider')()
+	yield require('./test-provider')()
 	yield require('./player-controls')()
 	yield require('./player')()
 }))

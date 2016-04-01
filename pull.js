@@ -1,3 +1,8 @@
+var match = require('./utils/match')
+var debug = require('./debug').sub('pull')
+debug.kill = debug.sub('kill')
+debug.mux = debug.sub('mux')
+
 var pull = require('pull-stream')
 
 pull.from = require('stream-to-pull-stream')
@@ -61,5 +66,113 @@ pull.seaport = (function() {
 		return out
 	})
 })()
+
+pull.events = function(self) {
+	var queue = []
+
+	self.emit = function() {
+		var msg = []
+		for(var i = 0; i < arguments.length; i++) msg[i] = arguments[i]
+		var oldQueue = queue
+		queue = []
+		for(var i = 0; i < oldQueue.length; i++) {
+			if(match(oldQueue[i][0], msg)) {
+				oldQueue[i][1](null, msg)
+			} else {
+				queue.push(oldQueue[i])
+			}
+		}
+		return self
+	}
+
+	self.emitter = pull.Sink(function(read) {
+		return pull.drain(function(msg) {
+			self.emit.apply(self, msg)
+		})(read)
+	})()
+
+	self.on = pull.Source(function() {
+		var pat = []
+		for(var i = 0; i < arguments.length; i++) pat[i] = arguments[i]
+		function read(end, cb) {
+			if(end) return cb(true)
+			queue.push([pat, cb])
+		}
+		// read = pull.flow.serial()(read)
+		read.pat = pat
+		return read
+	})
+
+	return self
+}
+
+pull.debug = pull.Through(function(read, debug, msg) {
+	return pull.map(function(d) {
+		debug(msg, d)
+		return d
+	})(read)
+})
+
+pull.kill = function(stream) {
+	if(typeof(stream) == 'object') {
+		var res = {
+			sink: pull.kill(stream.sink),
+			source: pull.kill(stream.source),
+			kill: function() {
+				res.sink.kill()
+				res.source.kill()
+			},
+		}
+		return res
+	} else {
+		var killed = false
+
+		var res = function(end, cb) {
+			if(typeof(end) == 'function') {
+				// if it's a sink this'll get called with `(read)`
+				var read = end
+				stream(function(end, cb) {
+					// pass it to `read` unless it's killed (and it's not already ending)
+					if(!end && killed) {
+						debug.kill('killing sink')
+						read(true, cb)
+						return
+					}
+					read(end, cb)
+				})
+				return res
+			} else {
+				// if it's a source this'll get called with `(end, cb)`
+				// pass it to `stream` unless it's killed (and it's not already ending)
+				var read = stream
+				if(!end && killed) {
+					debug.kill('killing source')
+					read(true, cb)
+					return
+				}
+				read(end, cb)
+			}
+		}
+		res.kill = function() {
+			debug.kill('setting kill')
+			killed = true
+		}
+		return res
+	}
+}
+
+pull.mux = function() {
+	var res = {}
+
+	res.sink = pull.drain(function(d) {
+		debug.mux('d', d)
+	}, function(end) {
+		debug.mux('end', end)
+	})
+
+	res.source = pull.many()
+
+	return res
+}
 
 module.exports = pull

@@ -7,6 +7,7 @@
 		"pull-defer": "~0.1.1",
 		"pull-through": "~1.0.17",
 		"pull-pushable": "~1.1.4",
+		"pull-many": "~1.0.6",
 
 		"bluebird": "~3.3.4",
 

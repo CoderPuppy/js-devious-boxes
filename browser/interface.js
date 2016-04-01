@@ -13,7 +13,7 @@ var services = new Set()
 var re = require('reconnect-ws')()
 re.on('connect', function(s) {
 	debug('connected')
-	mx = MuxDemux()
+	exports.mx = mx = MuxDemux()
 	mx.http = MuxDemux()
 	mx.http.pipe(mx.createStream('http')).pipe(mx.http)
 	mx.tcp = MuxDemux()
@@ -31,7 +31,7 @@ re.on('connect', function(s) {
 })
 re.on('disconnect', function() {
 	debug('disconnected')
-	mx = null
+	exports.mx = mx = null
 	services.forEach(function(service) {
 		service._stop()
 	})
@@ -261,7 +261,7 @@ tcp.server = function(port, seaport, isTLS, cb) {
 		
 		return function() {
 			debug.tcp('[connection] [tcp.server] stopping server ' + ser.service.host + ':' + ser.service.port)
-			mxdx.close()
+			mxdx.destroy()
 			return Promise.resolve()
 		}
 	}))
