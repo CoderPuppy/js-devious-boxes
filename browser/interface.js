@@ -1,4 +1,3 @@
-var MuxDemux = require('mux-demux')
 var xtend = require('xtend')
 var pull = require('../pull')
 var bufser = require('../utils/buffer-serialization.js')
@@ -6,6 +5,7 @@ var debug = require('../debug').sub('interface')
 debug.crypto = debug.sub('crypto')
 debug.tcp = debug.sub('tcp')
 debug.http = debug.sub('http')
+var msgpack = require('msgpack-lite')
 
 var mx
 var queue = []
@@ -13,14 +13,27 @@ var services = new Set()
 var re = require('reconnect-ws')()
 re.on('connect', function(s) {
 	debug('connected')
-	exports.mx = mx = MuxDemux()
-	mx.http = MuxDemux()
-	mx.http.pipe(mx.createStream('http')).pipe(mx.http)
-	mx.tcp = MuxDemux()
-	mx.tcp.pipe(mx.createStream('net')).pipe(mx.tcp)
-	mx.crypto = MuxDemux()
-	mx.crypto.pipe(mx.createStream('crypto')).pipe(mx.crypto)
-	mx.pipe(s).pipe(mx)
+	exports.mx = mx = pull.mux()
+
+	mx.http = pull.mux()
+	pull(mx.http, mx.create('http'), mx.http)
+
+	mx.tcp = pull.mux()
+	pull(mx.tcp, mx.create('tcp'), mx.tcp)
+
+	mx.crypto = pull.mux()
+	pull(mx.crypto, mx.create('crypto'), mx.crypto)
+
+	pull(
+		mx,
+		pull.debug(debug.trace, 'b → s'),
+		pull.map(msgpack.encode),
+		pull.from.duplex(s),
+		pull.map(msgpack.decode),
+		pull.debug(debug.trace, 's → b'),
+		mx
+	)
+
 	queue.forEach(function(req) {
 		req()
 	})
@@ -96,7 +109,7 @@ exports.crypto = function cipher(type, algo, opts) {
 	}
 
 	run(function() {
-		var real = mx.crypto.createStream(xtend(opts, {
+		var real = mx.crypto.create(xtend(opts, {
 			type: type,
 			algo: algo,
 		}), {
@@ -145,7 +158,7 @@ exports.request = function request(uri, opts) {
 	}
 		
 	run(function() {
-		var real = mx.http.createStream(xtend(opts, {
+		var real = mx.http.create(xtend(opts, {
 			type: 'client',
 		}), {
 			allowHalfOpen: true
@@ -179,7 +192,7 @@ tcp.client = function(host, port, tls) {
 	}
 		
 	run(function() {
-		var real = mx.tcp.createStream({
+		var real = mx.tcp.create({
 			type: 'client',
 			host: host,
 			port: port,
@@ -221,16 +234,16 @@ tcp.server = function(port, seaport, isTLS, cb) {
 		})
 		var data
 
-		var mxdx = MuxDemux(function(s) {
+		var mxdx = pull.mux(function(s) {
 			switch(s.meta.type) {
 			case 'client':
 				cb({
 					sink: pull(
 						bufser.output(),
-						pull.from.sink(s)
+						s
 					),
 					source: pull(
-						pull.from.source(s),
+						s,
 						bufser.input()
 					),
 					local: s.meta.local,
@@ -250,18 +263,24 @@ tcp.server = function(port, seaport, isTLS, cb) {
 			}
 		})
 
-		mxdx.pipe(mx.tcp.createStream({
-			type: 'server',
-			listen: seaport_,
-			tls: isTLS,
-		})).pipe(mxdx)
+		var kill = pull.kill(mxdx)
+
+		pull(
+			kill,
+			mx.tcp.create({
+				type: 'server',
+				listen: seaport_,
+				tls: isTLS,
+			}),
+			kill
+		)
 
 		yield p
 		debug.tcp('listening ' + ser.service.host + ':' + ser.service.port)
 		
 		return function() {
 			debug.tcp('[connection] [tcp.server] stopping server ' + ser.service.host + ':' + ser.service.port)
-			mxdx.destroy()
+			kill.kill()
 			return Promise.resolve()
 		}
 	}))
@@ -270,6 +289,10 @@ tcp.server = function(port, seaport, isTLS, cb) {
 
 var ports = exports.ports = exports.seaport = require('seaport')()
 run(function() {
-	var s = mx.createStream('seaport')
-	s.pipe(ports.createStream()).pipe(s)
+	var s = mx.create('seaport')
+	pull(
+		s,
+		pull.from.duplex(ports.createStream()),
+		s
+	)
 })

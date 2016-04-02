@@ -55,6 +55,7 @@ function generate(rcl, explicit) {
 		debug.sub = function() {
 			return generate(rcl.sub.apply(rcl, arguments), true)
 		}
+		if(exports.trace && debug.namespacePath[0] != 'trace') debug.trace = exports.trace.sub.apply(null, debug.namespacePath)
 
 		cache.set(rcl, debug)
 	}
@@ -67,5 +68,6 @@ function generate(rcl, explicit) {
 }
 
 exports = module.exports = generate(rc)
+exports.trace = exports.sub('trace')
 exports.explicits = explicits
 exports.generate = generate

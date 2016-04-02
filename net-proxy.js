@@ -1,4 +1,3 @@
-var MuxDemux = require('mux-demux')
 var hyperquest = require('hyperquest')
 var http = require('http')
 var net = require('net')
@@ -11,16 +10,16 @@ var debug = require('./debug').sub('net-proxy')
 
 module.exports = function(interface) {
 	var httpStream = (function() {
-		var mx = MuxDemux(function(s) {
+		var mx = pull.mux(function(s) {
 			if(!s.meta) return
 			switch(s.meta.type) {
 			case 'client':
 				pull(
-					pull.from.source(s),
+					s,
 					bufser.input(),
 					interface.request(s.meta),
 					bufser.output(),
-					pull.from.sink(s)
+					s
 				)
 				break
 
@@ -30,48 +29,48 @@ module.exports = function(interface) {
 			}
 		})
 
-		return pull.from.duplex(mx)
+		return mx
 	})()
 
 	var tcpStream = (function() {
-		var mx = MuxDemux(Promise.coroutine(function*(s) {
+		var mx = pull.mux(Promise.coroutine(function*(s) {
 			if(!s.meta) return
 			switch(s.meta.type) {
 			case 'client':
 				pull(
-					pull.from.source(s),
+					s,
 					bufser.input(),
 					interface.tcp.client(s.meta.host, s.meta.port, s.meta.tls),
 					bufser.output(),
-					pull.from.sink(s)
+					s
 				)
 				break
 
 			case 'server':
 				pull(
-					pull.from.source(s),
+					s,
 					yield tcpServer(s.meta),
-					pull.from.sink(s)
+					s
 				)
 				break
 			}
 		}))
 
-		tcpServer = Promise.coroutine(function*(meta) {
+		var tcpServer = Promise.coroutine(function*(meta) {
 			debug('starting server', meta)
-			var mx = MuxDemux()
+			var mx = pull.mux()
 
 			function handle(s) {
 				pull(
-					s,
+					pull.from.source(s),
 					bufser.output(),
-					pull.from.duplex(mx.createStream({
+					mx.create({
 						type: 'client',
 						local: s.local,
 						remote: s.remote,
-					})),
+					}),
 					bufser.input(),
-					s
+					pull.from.sink(s)
 				)
 			}
 
@@ -81,7 +80,7 @@ module.exports = function(interface) {
 
 			var signal
 			process.nextTick(function() {
-				signal = mx.createStream({ type: 'signal', service: server.service })
+				signal = mx.create({ type: 'signal', service: server.service })
 			})
 
 			var stopped = false
@@ -94,46 +93,55 @@ module.exports = function(interface) {
 					interface.ports.free(server.service)
 			}
 
-			mx.on('end', stop)
-			mx.on('close', stop)
-
-			return pull.from.duplex(mx)
+			return {
+				sink: pull(
+					pull.onEnd(stop),
+					mx
+				),
+				source: pull(
+					mx,
+					pull.onEnd(stop)
+				),
+			}
 		})
 
-		return pull.from.duplex(mx)
+		return mx
 	})()
 
-	var cryptoStream = pull.from.duplex(MuxDemux(function(s) {
+	var cryptoStream = pull.mux(function(s) {
 		pull(
-			pull.from.source(s),
+			s,
 			bufser.input(),
 			interface.crypto(s.meta.type, s.meta.algo, s.meta),
 			bufser.output(),
-			pull.from.sink(s)
+			s
 		)
-	}))
+	})
 
-	var mx = MuxDemux(function(s) {
+	var mx = pull.mux(function(s) {
+		debug(s.meta)
 		switch(s.meta) {
 		case 'http':
-			pull(pull.from.source(s), httpStream, pull.from.sink(s))
+			pull(s, httpStream, s)
 			break
 
-		case 'net':
-			pull(pull.from.source(s), tcpStream, pull.from.sink(s))
+		case 'tcp':
+			pull(s, tcpStream, s)
 			break
 
 		case 'crypto':
-			pull(pull.from.source(s), cryptoStream, pull.from.sink(s))
+			pull(s, cryptoStream, s)
 			break
 
 		case 'seaport':
-			s.pipe(interface.ports.createStream('remote')).pipe(s)
+			pull(s, pull.from.duplex(interface.ports.createStream('remote')), s)
 			break
 
 			// TODO: tls, https?
+		default:
+			debug('unknown stream type:', s.meta)
 		}
 	})
 
-	return pull.from.duplex(mx)
+	return mx
 }
