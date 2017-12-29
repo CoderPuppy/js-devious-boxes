@@ -6,7 +6,7 @@ pull.to = require('pull-stream-to-stream')
 pull.from = require('stream-to-pull-stream')
 pull.defer = require('pull-defer')
 pull.pushable = require('pull-pushable')
-pull.flow = require('pull-flow')
+// pull.flow = require('pull-flow')
 pull.tee = require('pull-tee')
 pull.seaport = (function() {
 	var semver = require('semver')
@@ -126,7 +126,7 @@ pull.events = function(self) {
 			if(end) return cb(true)
 			queue.push([pat, cb])
 		}
-		read = pull.flow.serial()(read)
+		// read = pull.flow.serial()(read)
 		read.pat = pat
 		return read
 	})

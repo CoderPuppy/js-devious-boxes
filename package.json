@@ -14,7 +14,6 @@
 		"pull-defer": "~0.1.1",
 		"pull-pushable": "~1.1.4",
 		"pull-tee": "~2.0.0",
-		"pull-flow": "~1.0.0",
 
 		"co": "~4.5.1",
 		"bluebird": "~2.9.24",
@@ -25,7 +24,7 @@
 		"dnode": "~1.2.0",
 		"mux-demux": "~3.7.9",
 		"engine.io-stream": "~0.4.3",
-		"ecstatic": "~0.7.3",
+		"ecstatic": "~2.0.0",
 		"xtend": "~4.0.0",
 		"reconnect-engine": "~0.1.0",
 		"body": "~5.0.0",
