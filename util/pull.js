@@ -10,7 +10,7 @@ pull.pushable = require('pull-pushable')
 pull.tee = require('pull-tee')
 pull.seaport = (function() {
 	var semver = require('semver')
-	return pull.Source(function(ports, meta) {
+	return function(ports, meta) {
 		// these are from seaport
 		function fixMeta (meta, port) {
 			if (!meta) return {};
@@ -61,7 +61,7 @@ pull.seaport = (function() {
 		})
 
 		return out
-	})
+	}
 })()
 pull.pausable = function() {
 	var queue = []
@@ -72,7 +72,7 @@ pull.pausable = function() {
 		else
 			fn()
 	}
-	return pull.Through(function(read) {
+	return function(read) {
 		function _read(end, cb) {
 			run(function() {
 				read(end, function(err, data) {
@@ -89,7 +89,7 @@ pull.pausable = function() {
 		}
 		_read.paused = function() { return paused }
 		return _read
-	})()
+	}
 }
 pull.events = function(self) {
 	var queue = []
@@ -113,13 +113,13 @@ pull.events = function(self) {
 		return self
 	}
 
-	self.emitter = pull.Sink(function(read) {
+	self.emitter = function(read) {
 		return pull.drain(function(msg) {
 			self.emit.apply(self, msg)
 		})(read)
-	})()
+	}
 
-	self.on = pull.Source(function() {
+	self.on = function() {
 		var pat = []
 		for(var i = 0; i < arguments.length; i++) pat[i] = arguments[i]
 		function read(end, cb) {
@@ -129,7 +129,7 @@ pull.events = function(self) {
 		// read = pull.flow.serial()(read)
 		read.pat = pat
 		return read
-	})
+	}
 
 	return self
 }
