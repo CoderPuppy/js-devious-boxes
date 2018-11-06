@@ -72,7 +72,7 @@ function Client(partner) {
 			if(opts.iv)
 				return pull.from.duplex(crypto.createDecipheriv(algo, opts.key, opts.iv))
 			else
-				return pull.from.duplex(crypto.createDecipher(algo, opts.password))
+				return pull.from.duplex(crypto.createDecipher(algo, opts.key))
 
 		case 'hash':
 			return pull.from.duplex(crypto.createHash(algo))
