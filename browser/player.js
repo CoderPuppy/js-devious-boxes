@@ -5,6 +5,7 @@ var PlayerInterface = require('../player-interface')
 var interface = require('./interface')
 var debug = require('../debug').sub('ui', 'player')
 var dnode = require('../dnode')
+var msgpack = require('msgpack-lite')
 
 var $ = document.querySelector.bind(document)
 
@@ -42,11 +43,19 @@ module.exports = Promise.coroutine(function*() {
 			debug('starting as', name)
 			var playerInterface = PlayerInterface(player)
 			service = interface.tcp.server({
-				role: 'devious-boxes:player',
-				name: name,
+				seaport: {
+					role: 'devious-boxes:player',
+					name: name,
+				},
 			}, function(s) {
 				var d = dnode(playerInterface)
-				pull(s, d, s)
+				pull(
+					s,
+					pull.map(msgpack.decode),
+					d,
+					pull.map(msgpack.encode),
+					s
+				)
 			})
 			yield service.start()
 			debug('serving', name)

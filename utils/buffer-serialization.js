@@ -3,6 +3,7 @@ var pull = require('../pull')
 exports.output = function() {
 	return pull.map(function(d) {
 		return new Buffer(d).toJSON()
+		// return d
 	})
 }
 exports.input = function() {

@@ -67,7 +67,7 @@ exports.run = run
 
 function service(start) {
 	var service = {
-		up: false,
+		status: 'down',
 		enabled: false,
 		startCb: start,
 
@@ -78,10 +78,11 @@ function service(start) {
 		}),
 
 		_start: Promise.coroutine(function*() {
-			if(service.up) return
+			if(service.status != 'down') return
 			if(!mx) return
-			service.up = true
+			service.status = 'starting'
 			service.stopCb = yield service.startCb()
+			service.status = 'up'
 		}),
 
 		stop: Promise.coroutine(function*() {
@@ -91,9 +92,10 @@ function service(start) {
 		}),
 
 		_stop: Promise.coroutine(function*() {
-			if(!service.up) return
-			service.up = false
+			if(service.status != 'up') return
+			service.status = 'stopping'
 			yield service.stopCb()
+			service.status = 'down'
 			service.stopCb = null
 		}),
 	}
@@ -126,10 +128,10 @@ exports.crypto = function cipher(type, algo, opts) {
 			// 	debug.crypto('out wire', d)
 			// 	return d
 			// }),
-			pull.from.sink(real)
+			real
 		))
 		stream.source.resolve(pull(
-			pull.from.source(real),
+			real,
 			// pull.map(function(d) {
 			// 	debug.crypto('in wire', d)
 			// 	return d
@@ -169,10 +171,10 @@ exports.request = function request(uri, opts) {
 			// 	return d
 			// }),
 			bufser.output(),
-			pull.from.sink(real)
+			real
 		))
 		stream.source.resolve(pull(
-			pull.from.source(real),
+			real,
 			bufser.input()
 			// pull.map(function(d) {
 			// 	debug.http('h → b', d.toString())
@@ -200,34 +202,19 @@ tcp.client = function(host, port, tls) {
 		})
 		stream.sink.resolve(pull(
 			bufser.output(),
-			pull.from.sink(real)
+			real
 		))
 		stream.source.resolve(pull(
-			pull.from.source(real),
+			real,
 			bufser.input()
 		))
 	})
 
 	return stream
 }
-tcp.server = function(port, seaport, isTLS, cb) {
-	if(typeof(port) == 'string' || typeof(port) == 'object') {
-		cb = isTLS, isTLS = seaport, seaport = port, port = undefined
-	}
-	if(typeof(seaport) != 'string' && typeof(seaport) != 'object') {
-		cb = isTLS, isTLS = seaport, seaport = undefined
-	}
-	if(typeof(isTLS) != 'boolean') {
-		cb = isTLS, isTLS = undefined
-	}
-	
-	var seaport_ = xtend(seaport, {
-		port: port || seaport.port,
-		role: seaport.role || seaport,
-	})
-
+tcp.server = function(opts, cb) {
 	var ser = service(Promise.coroutine(function*() {
-		debug.tcp('starting server', seaport_, isTLS)
+		debug.tcp('starting server', opts)
 		var resolve
 		var p = new Promise(function() {
 			resolve = arguments[0]
@@ -269,8 +256,7 @@ tcp.server = function(port, seaport, isTLS, cb) {
 			kill,
 			mx.tcp.create({
 				type: 'server',
-				listen: seaport_,
-				tls: isTLS,
+				opts: opts,
 			}),
 			kill
 		)

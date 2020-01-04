@@ -5,6 +5,7 @@ var interface = require('./interface')
 var bean = require('bean')
 var dnode = require('../dnode')
 var debug = require('../debug').sub('ui', 'account-provider')
+var msgpack = require('msgpack-lite')
 
 var $ = document.querySelector.bind(document)
 
@@ -48,12 +49,20 @@ module.exports = Promise.coroutine(function*() {
 			debug('logged in as', email)
 			var clientInterface = ClientInterface(client)
 			service = interface.tcp.server({
-				role: 'devious-boxes:music-source',
-				sourceId: 'pandora:' + email,
-				name: 'Pandora: ' + email,
+				seaport: {
+					role: 'devious-boxes:music-source',
+					sourceId: 'pandora:' + email,
+					name: 'Pandora: ' + email,
+				},
 			}, function(s) {
 				var d = dnode(clientInterface)
-				pull(s, d, s)
+				pull(
+					s,
+					pull.map(msgpack.decode),
+					d,
+					pull.map(msgpack.encode),
+					s
+				)
 			})
 			yield service.start()
 			debug('serving', email)

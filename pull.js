@@ -95,7 +95,7 @@ pull.events = function(self) {
 		return pull.drain(function(msg) {
 			self.emit.apply(self, msg)
 		})(read)
-	})()
+	})
 
 	self.on = pull.Source(function() {
 		var pat = []
@@ -134,43 +134,44 @@ pull.kill = function(stream) {
 		}
 		return res
 	} else {
-		var killed = false
+		var ended
 		var cbs = []
 
 		var res = function(end, cb) {
 			if(typeof(end) == 'function') {
 				// if it's a sink this'll get called with `(read)`
 				var read = end
+
 				cbs.push(function() {
-					read(true, function() {})
+					read(ended, function() {})
 				})
+
 				stream(function(end, cb) {
-					// pass it to `read` unless it's killed (and it's not already ending)
-					if(!end && killed) {
-						debug.kill('killing sink')
-						read(true, cb)
-						return
-					}
-					read(end, cb)
+					if(end) ended = end
+					if(ended) return read(ended, cb)
+
+					read(null, cb)
 				})
+
 				return res
 			} else {
 				// if it's a source this'll get called with `(end, cb)`
-				// pass it to `stream` unless it's killed (and it's not already ending)
 				var read = stream
-				type = 'source'
-				if(!end && killed) {
-					debug.kill('killing source')
-					read(true, cb)
-					return
-				}
-				read(end, cb)
+
+				if(end) ended = end
+				if(ended) return read(ended, cb)
+
+				read(null, function(end, data) {
+					if(end) ended = end
+
+					cb(end, data)
+				})
 			}
 		}
 		res.kill = function() {
-			if(killed) return
+			if(ended) return
 			debug.kill('setting kill')
-			killed = true
+			ended = true
 			cbs.forEach(function(cb) { cb() })
 		}
 		return res
@@ -301,6 +302,33 @@ pull.mux = function(cb) {
 		s.meta = meta
 		streams[s.id] = s
 
+		var queue = []
+		var cb_
+		var ended
+		var sendEnd = true
+
+		function send(data) {
+			if(cb_) {
+				var t = cb_
+				cb_ = null
+				t(null, data)
+			} else {
+				queue.push(data)
+			}
+		}
+
+		function doEnd(end) {
+			if(ended) return
+			ended = end
+			if(cb_) {
+				debug.mux(id, 'sending end')
+				sendEnd = false
+				var t = cb_
+				cb_ = null
+				t(null, [id, 'end', ended])
+			}
+		}
+
 		s.output = pull.pair()
 		s.sink = s.output.sink
 		mx.source.add(pull(
@@ -309,28 +337,34 @@ pull.mux = function(cb) {
 				var ended
 
 				return function(end, cb) {
-					if(end && !ended) {
-						ended = end
-						read(end, function(end) {
-							cb(null, [id, 'end', end])
-						})
+					if(end && sendEnd) sendEnd = false
+					if(end && !ended) ended = end
+					if(ended) {
+						if(sendEnd) {
+							sendEnd = false
+							cb(null, [id, 'end', ended])
+						} else {
+							read(ended, cb)
+						}
 						return
 					}
-					if(ended) return read(ended, cb)
+
+					if(queue.length > 0) return cb(null, queue.shift())
+
+					cb_ = cb
 
 					read(null, function(end, data) {
-						if(end && !ended) {
-							cb(null, [id, 'end', end])
-							ended = end
-							return
-						}
-						cb(null, [id, 'data', data])
+						if(end) return doEnd(end)
+						send([id, 'data', data])
 					})
 				}
 			})()
 		))
 
-		s.source = pull.pushable()
+		s.source = pull.pushable(function(err) {
+			debug.mux(id, 'stream source closed:', err)
+			doEnd(err)
+		})
 
 		return s
 	}
@@ -341,27 +375,32 @@ pull.mux = function(cb) {
 		var data = d[2]
 		var s = streams[id]
 
-		switch(op) {
-		case 'new':
+		if(op == 'new') {
 			s = createStream(id, data)
 			cb(s)
-			break
+		} else if(s) {
+			switch(op) {
+			case 'data':
+				s.source.push(data)
+				break
 
-		case 'data':
-			s.source.push(data)
-			break
+			case 'end':
+				s.source.end()
+				break
 
-		case 'end':
-			s.source.end()
-			break
-
-		default:
-			debug.mux('invalid operator:', op)
+			default:
+				debug.mux('invalid operator:', op, d)
+			}
+		} else {
+			debug.mux('no stream: ', id, d)
 		}
-
-		debug.mux('d', d)
 	}, function(end) {
 		debug.mux('end', end)
+		for(var id in streams) {
+			var stream = streams[id]
+			stream.source.end()
+			stream.output.source(true, function() {})
+		}
 	})
 
 	mx.create = function(meta) {

@@ -1,7 +1,6 @@
 var dnode = require('dnode')
 var Promise = require('bluebird')
 var pull = require('./pull')
-var MuxDemux = require('mux-demux')
 var debug = require('./debug').sub('dnode')
 
 var exports = module.exports = function(exp) {
@@ -19,11 +18,11 @@ var exports = module.exports = function(exp) {
 		})
 	}
 	var d = dnode(export_)
-	var mx = MuxDemux(function(s) {
+	var mx = pull.mux(function(s) {
 		switch(s.meta.type) {
 		case 'dnode':
 			debug('got dnode stream')
-			s.pipe(d)
+			pull(s, pull.from.sink(d))
 			break
 
 		case 'events':
@@ -32,7 +31,7 @@ var exports = module.exports = function(exp) {
 				pull(
 					exp.on(),
 					pull.debug(debug, 'events on'),
-					pull.from.duplex(s),
+					s,
 					pull.debug(debug, 'events emit'),
 					exp.emitter()
 				)
@@ -43,11 +42,11 @@ var exports = module.exports = function(exp) {
 			debug('invalid stream type:', s.meta)
 		}
 	})
-	d.pipe(mx.createStream({ type: 'dnode' }))
+	pull(pull.from.source(d), mx.create({ type: 'dnode' }))
 
 	return {
-		sink: pull.from.sink(mx),
-		source: pull.from.source(mx),
+		sink: mx.sink,
+		source: mx.source,
 		remote: new Promise(function(resolve, reject) {
 			d.on('remote', function(r) {
 				var r_ = {}
@@ -65,8 +64,8 @@ var exports = module.exports = function(exp) {
 
 					debug('creating events stream')
 
-					var stream = mx.createStream({ type: 'events' })
-					pull(eventsPush, pull.from.duplex(stream), i.emitter())
+					var stream = mx.create({ type: 'events' })
+					pull(eventsPush, stream, i.emitter())
 				}
 
 				r_.emit = function() {

@@ -3,6 +3,7 @@ var interface = require('./interface')
 var bean = require('bean')
 var dnode = require('../dnode')
 var debug = require('../debug').sub('ui', 'test-provider')
+var msgpack = require('msgpack-lite')
 
 var $ = document.querySelector.bind(document)
 
@@ -68,12 +69,20 @@ module.exports = Promise.coroutine(function*() {
 			}
 			debug('starting', name)
 			service = interface.tcp.server({
-				role: 'devious-boxes:music-source',
-				sourceId: 'test:' + name,
-				name: 'Test: ' + name,
+				seaport: {
+					role: 'devious-boxes:music-source',
+					sourceId: 'test:' + name,
+					name: 'Test: ' + name,
+				},
 			}, function(s) {
 				var d = dnode(clientInterface)
-				pull(s, d, s)
+				pull(
+					s,
+					pull.map(msgpack.decode),
+					d,
+					pull.map(msgpack.encode),
+					s
+				)
 			})
 			yield service.start()
 			debug('serving', name)

@@ -62,7 +62,7 @@ module.exports = function(interface) {
 
 			function handle(s) {
 				pull(
-					pull.from.source(s),
+					s,
 					bufser.output(),
 					mx.create({
 						type: 'client',
@@ -70,13 +70,13 @@ module.exports = function(interface) {
 						remote: s.remote,
 					}),
 					bufser.input(),
-					pull.from.sink(s)
+					s
 				)
 			}
 
-			var server = interface.tcp.server(meta.listen, meta.tls || false, handle)
+			var server = interface.tcp.server(meta.opts, handle)
 			yield server.start()
-			debug('server started', server.service || server.address(), meta)
+			debug('server started', server.service || server.server.address(), meta)
 
 			var signal
 			process.nextTick(function() {
@@ -87,7 +87,7 @@ module.exports = function(interface) {
 			function stop() {
 				if(stopped) return
 				stopped = true
-				debug('stopping server', server.service || server.address())
+				debug('stopping server', server.service || server.server.address(), meta)
 				server.stop()
 				if(server.service)
 					interface.ports.free(server.service)
@@ -119,7 +119,7 @@ module.exports = function(interface) {
 	})
 
 	var mx = pull.mux(function(s) {
-		debug(s.meta)
+		debug('meta', s.meta)
 		switch(s.meta) {
 		case 'http':
 			pull(s, httpStream, s)

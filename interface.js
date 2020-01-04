@@ -135,18 +135,10 @@ tcp.client = function(host, port, isTLS) {
 	)
 	return s
 }
-tcp.server = function(port, seaport, isTLS, cb) {
-	if(typeof(port) == 'string' || typeof(port) == 'object') {
-		cb = isTLS, isTLS = seaport, seaport = port, port = undefined
-	}
-	if(typeof(seaport) != 'string' && typeof(seaport) != 'object') {
-		cb = isTLS, isTLS = seaport, seaport = undefined
-	}
-	if(typeof(isTLS) != 'boolean') {
-		cb = isTLS, isTLS = undefined
-	}
+tcp.server = function(opts, cb) {
+	opts = xtend(opts)
 
-	var server = (isTLS ? tls : net).createServer(function(s) {
+	var server = (opts.tls ? tls : net).createServer(function(s) {
 		cb({
 			sink: pull.from.sink(s),
 			source: pull.from.source(s),
@@ -159,21 +151,46 @@ tcp.server = function(port, seaport, isTLS, cb) {
 		})
 	})
 
-	var listen = xtend(seaport, {
-		port: port || seaport.port,
-		role: seaport.role || seaport,
-	})
+	if(opts.seaport)
+		opts.seaport = xtend(opts.seaport, {
+			role: opts.seaport.role || opts.seaport,
+		})
 
 	var service
 
 	var res = {}
+	res.server = server
+
+	var enabled = false
+
+	server.on('listening', function() {
+		var addr = server.address()
+		debug.tcp('listening', opts, addr)
+		if(opts.seaport)
+			res.service = service = ports.registerMeta(xtend(opts.seaport, {
+				port: addr.port,
+			}))
+	})
+
+	server.on('close', function() {
+		debug.tcp('closing', opts)
+		if(service)
+			ports.free(service)
+		res.service = service = null
+	})
+
+	server.on('error', function(e) {
+		console.error('TODO: TCP SERVER ERROR', e)
+	})
 
 	res.start = function() {
-		return new Promise(function(resolve) {
-			if(listen.role)
-				server.listen((res.service = service = ports.registerMeta(listen)).port, resolve)
+		return new Promise(function(resolve, reject) {
+			if(opts.port)
+				server.listen(opts.port)
 			else
-				server.listen(listen, resolve)
+				server.listen()
+			server.once('listening', resolve)
+			server.once('error', reject)
 		})
 	}
 
@@ -185,9 +202,6 @@ tcp.server = function(port, seaport, isTLS, cb) {
 				else
 					resolve()
 			})
-			if(service)
-				ports.free(service)
-			res.service = service = null
 		})
 	}
 
