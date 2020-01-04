@@ -60,7 +60,7 @@ function Client(partner) {
 		return pull.from.duplex(hyperquest.apply(null, arguments))
 	}
 	this.crypto = function(type, algo, opts) {
-		console.log(type, algo, opts)
+		// console.log(type, algo, opts)
 		switch(type) {
 		case 'cipher':
 			if(opts.iv)
@@ -72,7 +72,7 @@ function Client(partner) {
 			if(opts.iv)
 				return pull.from.duplex(crypto.createDecipheriv(algo, opts.key, opts.iv))
 			else
-				return pull.from.duplex(crypto.createDecipher(algo, opts.password))
+				return pull.from.duplex(crypto.createDecipher(algo, opts.key))
 
 		case 'hash':
 			return pull.from.duplex(crypto.createHash(algo))
@@ -85,40 +85,24 @@ function Client(partner) {
 var iv = new Buffer("")
 
 Client.prototype.encrypt = function*(data) {
-	// var self = this
-	// return yield new Promise(function(resolve, reject) {
-	// 	console.log(data.toString())
-	// 	pull(pull.values([data.toString()]), self.crypto('cipher', 'bf-ecb', { key: self.partner.encryptPassword, iv: iv }), pull.collect(function(err, d) {
-	// 		resolve(d.map(function(d) {
-	// 			return new Buffer(d).toString('hex')
-	// 		}).join(''))
-	// 	}))
-	// })
-	var c = crypto.createCipheriv('bf-ecb', this.partner.encryptPassword, iv)
-	return Buffer.concat([
-		c.update(data),
-		c.final()
-	]).toString('hex')
+	var self = this
+	return yield new Promise(function(resolve, reject) {
+		pull(pull.values([data.toString()]), self.crypto('cipher', 'bf-ecb', { key: self.partner.encryptPassword, iv: iv }), pull.collect(function(err, d) {
+			resolve(d.map(function(d) {
+				return new Buffer(d).toString('hex')
+			}).join(''))
+		}))
+	})
 }
 
 Client.prototype.decrypt = function*(data) {
-	// var self = this
-	// console.log('decrypt', data.toString(), new Buffer(data, 'hex').toString())
-	// data = new Buffer(data, 'hex')
-	// return yield new Promise(function(resolve, reject) {
-	// 	console.log(data.toString())
-	// 	pull(pull.values([data.toString()]), self.crypto('decipher', 'bf-ecb', { key: self.partner.decryptPassword, iv: iv }), pull.collect(function(err, d) {
-	// 		resolve(d.map(function(d) {
-	// 			return d.toString()
-	// 		}).join(''))
-	// 	}))
-	// })
+	var self = this
 	data = new Buffer(data, 'hex')
-	var c = crypto.createDecipheriv('bf-ecb', this.partner.decryptPassword, iv)
-	return Buffer.concat([
-		c.update(data),
-		c.final()
-	]).toString('utf-8')
+	return yield new Promise(function(resolve, reject) {
+		pull(pull.values([data]), self.crypto('decipher', 'bf-ecb', { key: self.partner.decryptPassword, iv: iv }), pull.collect(function(err, d) {
+			resolve(Buffer.concat(d).toString('utf-8'))
+		}))
+	})
 }
 
 Client.prototype.partnerLogin = function*() {

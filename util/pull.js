@@ -8,10 +8,9 @@ pull.defer = require('pull-defer')
 pull.pushable = require('pull-pushable')
 // pull.flow = require('pull-flow')
 pull.tee = require('pull-tee')
-pull.through = require('pull-through')
 pull.seaport = (function() {
 	var semver = require('semver')
-	return pull.Source(function(ports, meta) {
+	return function(ports, meta) {
 		// these are from seaport
 		function fixMeta (meta, port) {
 			if (!meta) return {};
@@ -62,45 +61,42 @@ pull.seaport = (function() {
 		})
 
 		return out
-	})
+	}
 })()
 pull.pausable = function() {
 	var queue = []
 	var paused = true
-	var doEnd = false
 	function run(fn) {
 		if(paused)
 			queue.push(fn)
 		else
 			fn()
 	}
-	var res = pull.Through(function(read) {
-		return function(end, cb) {
-			if(doEnd) {
-				cb(true)
-				run(function() { read(true) })
-			} else {
-				run(function() {
-					read(end, function(err, data) {
-						run(function() {
-							cb(err, data)
-						})
+	return function(read) {
+		function _read(end, cb) {
+			run(function() {
+				read(end, function(err, data) {
+					run(function() {
+						cb(err, data)
 					})
 				})
-			}
+			})
 		}
-	})()
-	res.pause = function() { paused = true }
-	res.resume = function() {
-		paused = false
-		queue.forEach(function(fn) { fn() })
+		_read.pause = function() { paused = true }
+		_read.resume = function() {
+			paused = false
+			queue.forEach(function(fn) { fn() })
+		}
+		_read.paused = function() { return paused }
+		return _read
 	}
-	res.paused = function() { return paused }
-	res.end = function() { doEnd = true }
-	return res
 }
 pull.events = function(self) {
 	var queue = []
+
+	function matches(pat, msg) {
+		return match(pat[0], msg[0]) && match(pat.slice(1), msg.slice(1))
+	}
 
 	self.emit = function() {
 		var msg = []
@@ -108,7 +104,7 @@ pull.events = function(self) {
 		var oldQueue = queue
 		queue = []
 		for(var i = 0; i < oldQueue.length; i++) {
-			if(match(oldQueue[i][0], msg)) {
+			if(matches(oldQueue[i][0], msg)) {
 				oldQueue[i][1](null, msg)
 			} else {
 				queue.push(oldQueue[i])
@@ -117,13 +113,13 @@ pull.events = function(self) {
 		return self
 	}
 
-	self.emitter = pull.Sink(function(read) {
+	self.emitter = function(read) {
 		return pull.drain(function(msg) {
 			self.emit.apply(self, msg)
 		})(read)
-	})()
+	}
 
-	self.on = pull.Source(function() {
+	self.on = function() {
 		var pat = []
 		for(var i = 0; i < arguments.length; i++) pat[i] = arguments[i]
 		function read(end, cb) {
@@ -133,7 +129,7 @@ pull.events = function(self) {
 		// read = pull.flow.serial()(read)
 		read.pat = pat
 		return read
-	})
+	}
 
 	return self
 }
