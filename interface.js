@@ -27,7 +27,7 @@ exports.crypto = function(type, algo, opts) {
 		switch(type) {
 		case 'encipher':
 			var cipher = iv ? crypto.createCipheriv(algo, key, iv) : crypto.createCipher(algo, key)
-			return pull.Through(function(read) {
+			return function(read) {
 				var end_
 
 				return function(end, cb) {
@@ -43,11 +43,11 @@ exports.crypto = function(type, algo, opts) {
 						}
 					})
 				}
-			})()
+			}
 
 		case 'decipher':
 			var cipher = iv ? crypto.createDecipheriv(algo, key, iv) : crypto.createDecipher(algo, key)
-			return pull.Through(function(read) {
+			return function(read) {
 				var end_
 
 				return function(end, cb) {
@@ -63,11 +63,11 @@ exports.crypto = function(type, algo, opts) {
 						}
 					})
 				}
-			})()
+			}
 
 		case 'hash':
 			var hash = crypto.createHash(algo)
-			return pull.Through(function(read) {
+			return function(read) {
 				var end_
 				return function(end, cb) {
 					if(end) return read(end, cb)
@@ -82,7 +82,7 @@ exports.crypto = function(type, algo, opts) {
 						}
 					})
 				}
-			})()
+			}
 
 		default: throw new Error('unknown op: ' + type)
 		}
@@ -114,17 +114,17 @@ function request(uri, opts) {
 
 	var s = pull.from.duplex(hyperquest(opts))
 
-	return s
-	// return {
-	// 	sink: pull(pull.map(function(d) {
-	// 		debug.http('b → h', d)
-	// 		return d
-	// 	}), s.sink),
-	// 	source: pull(s.source, pull.map(function(d) {
-	// 		debug.http('h → b', d)
-	// 		return d
-	// 	}))
-	// }
+	// return s
+	return {
+		sink: pull(pull.map(function(d) {
+			debug.http('b → h', d)
+			return d
+		}), s.sink),
+		source: pull(s.source, pull.map(function(d) {
+			debug.http('h → b', d)
+			return d
+		}))
+	}
 }
 exports.request = request
 

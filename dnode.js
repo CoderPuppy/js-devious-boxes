@@ -76,16 +76,16 @@ var exports = module.exports = function(exp) {
 					return r_
 				}
 
-				r_.emitter = pull.Sink(function(read) {
+				r_.emitter = function(read) {
 					return pull.drain(function(msg) {
 						eventsPush.push(msg)
 					})(read)
-				})()
+				}
 
-				r_.on = pull.Source(function() {
+				r_.on = function() {
 					ensure()
 					return i.on.apply(i, arguments)
-				})
+				}
 
 				resolve(r_)
 			})

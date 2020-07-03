@@ -5,7 +5,6 @@ var PlayerInterface = require('../player-interface')
 var interface = require('./interface')
 var debug = require('../debug').sub('ui', 'player')
 var dnode = require('../dnode')
-var msgpack = require('msgpack-lite')
 
 var $ = document.querySelector.bind(document)
 
@@ -51,9 +50,9 @@ module.exports = Promise.coroutine(function*() {
 				var d = dnode(playerInterface)
 				pull(
 					s,
-					pull.map(msgpack.decode),
+					pull.decode(),
 					d,
-					pull.map(msgpack.encode),
+					pull.encode(),
 					s
 				)
 			})

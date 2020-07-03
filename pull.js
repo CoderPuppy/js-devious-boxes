@@ -16,10 +16,11 @@ pull.pushable = require('pull-pushable')
 pull.many = require('pull-many')
 pull.pair = require('pull-pair')
 pull.delay = require('pull-delay')
+pull.split = require('pull-split')
 
 pull.seaport = (function() {
 	var semver = require('semver')
-	return pull.Source(function(ports, meta) {
+	return function(ports, meta) {
 		// these are from seaport
 		function fixMeta (meta, port) {
 			if (!meta) return {};
@@ -70,7 +71,7 @@ pull.seaport = (function() {
 		})
 
 		return out
-	})
+	}
 })()
 
 pull.events = function(self) {
@@ -91,15 +92,13 @@ pull.events = function(self) {
 		return self
 	}
 
-	self.emitter = pull.Sink(function(read) {
+	self.emitter = function() {
 		return pull.drain(function(msg) {
 			self.emit.apply(self, msg)
-		})(read)
-	})
+		})
+	}
 
-	self.on = pull.Source(function() {
-		var pat = []
-		for(var i = 0; i < arguments.length; i++) pat[i] = arguments[i]
+	self.on = function(...pat) {
 		function read(end, cb) {
 			if(end) return cb(true)
 			queue.push([pat, cb])
@@ -107,20 +106,17 @@ pull.events = function(self) {
 		// read = pull.flow.serial()(read)
 		read.pat = pat
 		return read
-	})
+	}
 
 	return self
 }
 
-pull.debug = pull.Through(function(read, debug) {
-	var args = []
-	for(var i = 2; i < arguments.length; i++) args[i - 2] = arguments[i]
-
+pull.debug = function(debug, ...args) {
 	return pull.map(function(d) {
 		debug.apply(null, args.concat([d]))
 		return d
-	})(read)
-})
+	})
+}
 
 pull.kill = function(stream) {
 	if(typeof(stream) == 'object') {
@@ -178,7 +174,7 @@ pull.kill = function(stream) {
 	}
 }
 
-pull.onEnd = pull.Through(function(read, onEnd) {
+pull.onEnd = function(onEnd) { return function(read) {
 	var ended = false
 	return function(end, cb) {
 		return read(end, function(end, data) {
@@ -186,104 +182,107 @@ pull.onEnd = pull.Through(function(read, onEnd) {
 			cb(end, data)
 		})
 	}
-})
+} }
 
-pull.join = pull.Source(function(srcs) {
-	srcs = srcs.map(function(src) {
-		return { read: src }
-	})
+pull.join = function(srcs) {
+	srcs = new Set(srcs.map(function(src, i) {
+		return { read: src, i: i }
+	}))
 
-	var ended
-	var cb_
+	const id = Math.floor(Math.random() * 1000)
+	let pendingCB = null
+	let nextI = srcs.size
 
-	function doEnd(end) {
-		debug.join('end', end)
-		ended = end
-		for(var src of srcs) {
-			if(src.ended) continue
-			src.ended = true
-			src.read(end, function(end, data) {
-				debug.join('got after end', end, data)
-			})
-		}
-		if(cb_) {
-			debug.join('calling cb_')
-			var t = cb_
-			cb_ = null
-			t(end)
-		}
-	}
+	debug.join('create', id, srcs)
 
 	function read(src) {
-		debug.join('reading from source')
+		if(src.reading) return;
+		src.reading = true
 		src.read(null, function(end, data) {
+			src.reading = false
 			if(end === true) {
-				utils.array.remove(srcs, src)
-				debug.join('removing source')
-				if(srcs.length == 0) {
-					debug.join('no more sources')
-					doEnd(true)
-				}
-				return
-			}
-			if(end) {
-				debug.join('source ending', end)
-				src.ended = true
-				doEnd(end)
-				return
-			}
-
-			debug.join('got data')
-
-			if(cb_) {
-				var t = cb_
-				cb_ = null
-				t(null, data)
-				debug.join('done reading')
+				srcs.delete(src)
+				if(srcs.size == 0 && pendingCB) pendingCB(end)
+			} else if(end) {
+				src.pendingErr = end
+				if(pendingCB) pendingCB(end)
 			} else {
-				src.hasPacket = true
-				src.packet = data
-				debug.join('caching data')
+				if(pendingCB) {
+					const cb = pendingCB
+					pendingCB = null
+					cb(null, data)
+				} else {
+					src.pending = data
+				}
 			}
 		})
 	}
 
-	var res = function(end, cb) {
-		cb_ = cb
-		if(end) return doEnd(end)
-		if(ended) {
-			debug.join('sending previous end')
-			cb_ = null
-			cb(ended)
+	let abortCB = null
+	function doAbort(abort) {
+		if(srcs.size == 0) {
+			if(abortCB) abortCB(true)
+			return
+		}
+		for(const src of srcs) {
+			if(src.reading) continue;
+			src.reading = true
+			src.read(abort, function(end, data) {
+				src.reading = false
+				if(end) {
+					srcs.delete(src)
+					doAbort(abort)
+				} else {
+					throw new Error('TODO: bad')
+				}
+			})
+		}
+	}
+
+	const res = function(abort, cb) {
+		if(abort) {
+			abortCB = cb
+			doAbort(abort)
 			return
 		}
 
-		for(var src of srcs) {
-			if(src.hasPacket) {
-				debug.join('found cached data')
-				var packet = src.packet
-				src.hasPacket = false
-				src.packet = null
-				return cb(null, packet)
+		if(srcs.size == 0) {
+			cb(true)
+			return
+		}
+
+		for(const src of srcs) {
+			if(src.pendingErr) {
+				cb(src.pendingErr)
+				return
+			}
+			if(src.pending) {
+				const data = src.pending
+				src.pending = null
+				cb(null, data)
+				return
 			}
 		}
-		debug.join('starting reading')
-		srcs.forEach(read)
-	}
 
-	res.add = function(srcRead) {
-		debug.join('adding source')
-		var src = {
-			read: srcRead,
-		}
-		srcs.push(src)
-		if(cb_) {
+		pendingCB = cb
+		for(const src of srcs) {
 			read(src)
 		}
 	}
 
+	res.add = function(src) {
+		debug.join('add', id, nextI, src)
+		src = {
+			read: src,
+			i: nextI,
+		}
+		srcs.add(src)
+		nextI += 1
+		if(pendingCB) read(src)
+	}
+
 	return res
-})
+}
 
 pull.mux = function(cb) {
 	cb = cb || function() {}
@@ -302,69 +301,49 @@ pull.mux = function(cb) {
 		s.meta = meta
 		streams[s.id] = s
 
-		var queue = []
-		var cb_
-		var ended
-		var sendEnd = true
-
-		function send(data) {
-			if(cb_) {
-				var t = cb_
-				cb_ = null
-				t(null, data)
-			} else {
-				queue.push(data)
-			}
-		}
-
-		function doEnd(end) {
-			if(ended) return
-			ended = end
-			if(cb_) {
-				debug.mux(id, 'sending end')
-				sendEnd = false
-				var t = cb_
-				cb_ = null
-				t(null, [id, 'end', ended])
-			}
-		}
-
 		s.output = pull.pair()
 		s.sink = s.output.sink
 		mx.source.add(pull(
 			s.output.source,
-			pull.Through(function(read) {
-				var ended
+			function(read) {
+				var realEnd
 
 				return function(end, cb) {
-					if(end && sendEnd) sendEnd = false
-					if(end && !ended) ended = end
-					if(ended) {
-						if(sendEnd) {
-							sendEnd = false
-							cb(null, [id, 'end', ended])
-						} else {
-							read(ended, cb)
-						}
-						return
+					end = end || s.aborted
+					if(end) {
+						read(end, function(end, data) {
+							debug.mux('data after abort', end, data)
+						})
+						cb(end)
+					} else if(realEnd) {
+						cb(realEnd)
+					} else {
+						read(null, function(end, data) {
+							if(end) {
+								cb(null, [id, 'end', end])
+								realEnd = end
+							} else {
+								cb(null, [id, 'data', data])
+							}
+						})
 					}
-
-					if(queue.length > 0) return cb(null, queue.shift())
-
-					cb_ = cb
-
-					read(null, function(end, data) {
-						if(end) return doEnd(end)
-						send([id, 'data', data])
-					})
 				}
-			})()
+			}
 		))
 
-		s.source = pull.pushable(function(err) {
-			debug.mux(id, 'stream source closed:', err)
-			doEnd(err)
-		})
+		s.input = pull.pushable(true)
+		s.source = pull(
+			s.input.source,
+			function(read) {
+				return function(abort, cb) {
+					if(abort) {
+						debug.mux(id, 'stream source closed:', abort)
+						signal.push([id, 'abort', abort])
+					}
+					read(abort, cb)
+				}
+			}
+		)
 
 		return s
 	}
@@ -376,16 +355,21 @@ pull.mux = function(cb) {
 		var s = streams[id]
 
 		if(op == 'new') {
+			debug.mux('got new stream', id, data)
 			s = createStream(id, data)
 			cb(s)
 		} else if(s) {
 			switch(op) {
 			case 'data':
-				s.source.push(data)
+				s.input.push(data)
 				break
 
 			case 'end':
-				s.source.end()
+				s.input.end(data)
+				break
+
+			case 'abort':
+				s.aborted = true
 				break
 
 			default:
@@ -398,7 +382,7 @@ pull.mux = function(cb) {
 		debug.mux('end', end)
 		for(var id in streams) {
 			var stream = streams[id]
-			stream.source.end()
+			stream.input.end()
 			stream.output.source(true, function() {})
 		}
 	})
@@ -414,6 +398,18 @@ pull.mux = function(cb) {
 	}
 
 	return mx
+}
+
+pull.encode = function() {
+	return pull.map(d => JSON.stringify(d) + '\n')
+}
+
+pull.decode = function() {
+	return pull(
+		pull.split('\n'),
+		pull.filter(),
+		pull.map(JSON.parse)
+	)
 }
 
 module.exports = pull

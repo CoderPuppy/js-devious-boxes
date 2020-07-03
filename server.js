@@ -2,17 +2,16 @@ var pull = require('./pull')
 var proxy = require('./net-proxy')
 var interface = require('./interface')
 var debug = require('./debug').sub('server')
-var msgpack = require('msgpack-lite')
 
 var server = require('http').createServer(require('ecstatic')({ root: __dirname + '/public' }))
 require('websocket-stream').createServer({ server: server}, function(s) {
 	pull(
 		pull.from.source(s),
-		pull.map(msgpack.decode),
+		pull.decode(),
 		pull.debug(debug.trace, 'b → s'),
 		proxy(interface),
 		pull.debug(debug.trace, 's → b'),
-		pull.map(msgpack.encode),
+		pull.encode(),
 		pull.from.sink(s)
 	)
 })

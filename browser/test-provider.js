@@ -3,7 +3,6 @@ var interface = require('./interface')
 var bean = require('bean')
 var dnode = require('../dnode')
 var debug = require('../debug').sub('ui', 'test-provider')
-var msgpack = require('msgpack-lite')
 
 var $ = document.querySelector.bind(document)
 
@@ -78,9 +77,9 @@ module.exports = Promise.coroutine(function*() {
 				var d = dnode(clientInterface)
 				pull(
 					s,
-					pull.map(msgpack.decode),
+					pull.decode(),
 					d,
-					pull.map(msgpack.encode),
+					pull.encode(),
 					s
 				)
 			})

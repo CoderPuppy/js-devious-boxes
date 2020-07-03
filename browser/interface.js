@@ -5,7 +5,6 @@ var debug = require('../debug').sub('interface')
 debug.crypto = debug.sub('crypto')
 debug.tcp = debug.sub('tcp')
 debug.http = debug.sub('http')
-var msgpack = require('msgpack-lite')
 
 var mx
 var queue = []
@@ -27,9 +26,11 @@ re.on('connect', function(s) {
 	pull(
 		mx,
 		pull.debug(debug.trace, 'b → s'),
-		pull.map(msgpack.encode),
+		pull.encode(),
+		pull.debug(debug.trace, 'b → s [enc]'),
 		pull.from.duplex(s),
-		pull.map(msgpack.decode),
+		pull.debug(debug.trace, 's → b [enc]'),
+		pull.decode(),
 		pull.debug(debug.trace, 's → b'),
 		mx
 	)
@@ -215,40 +216,38 @@ tcp.client = function(host, port, tls) {
 tcp.server = function(opts, cb) {
 	var ser = service(Promise.coroutine(function*() {
 		debug.tcp('starting server', opts)
-		var resolve
-		var p = new Promise(function() {
-			resolve = arguments[0]
+		var mxdx
+		var p = new Promise(function(resolve) {
+			mxdx = pull.mux(function(s) {
+				switch(s.meta.type) {
+				case 'client':
+					cb({
+						sink: pull(
+							bufser.output(),
+							s
+						),
+						source: pull(
+							s,
+							bufser.input()
+						),
+						local: s.meta.local,
+						remote: s.meta.remote,
+					})
+					break
+
+				case 'signal':
+					var data = s.meta
+					ser.service = data.service
+					
+					resolve()
+					break
+
+				default:
+					debug.tcp('unknown stream type:', s.meta.type)
+				}
+			})
 		})
-		var data
 
-		var mxdx = pull.mux(function(s) {
-			switch(s.meta.type) {
-			case 'client':
-				cb({
-					sink: pull(
-						bufser.output(),
-						s
-					),
-					source: pull(
-						s,
-						bufser.input()
-					),
-					local: s.meta.local,
-					remote: s.meta.remote,
-				})
-				break
-
-			case 'signal':
-				data = s.meta
-				ser.service = data.service
-				
-				resolve()
-				break
-
-			default:
-				debug.tcp('unknown stream type:', s.meta.type)
-			}
-		})
 
 		var kill = pull.kill(mxdx)
 

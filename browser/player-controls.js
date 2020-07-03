@@ -3,7 +3,6 @@ var bean = require('../utils/bean')
 var interface = require('./interface')
 var pull = require('../pull')
 var dnode = require('../dnode')
-var msgpack = require('msgpack-lite')
 var debug = require('../debug').sub('ui', 'player-controls')
 
 var $ = document.querySelector.bind(document)
@@ -53,9 +52,9 @@ module.exports = Promise.coroutine(function*() {
 
 		pull(
 			player_.kill,
-			pull.map(msgpack.encode),
+			pull.encode(),
 			interface.tcp.client(meta.host, meta.port),
-			pull.map(msgpack.decode),
+			pull.decode(),
 			player_.kill
 		)
 
@@ -124,38 +123,39 @@ function PlayerControls(E, player) {
 		self.E.mixer.el.appendChild(el)
 	}
 
-	function addStation(station) {
-		debug('+station', station)
-		if(Array.isArray(station)) station = station[0]
-		if(self.E.mixer.stations[station.id]) return
-		if(!self.E.mixer.sources[station.source]) return debug('missing source for station', station)
+	addStationHost = Promise.coroutine(function*(stationHost) {
+		const station = yield self.player.remote.station(stationHost.station)
+		debug('+station:host', stationHost, station)
+		const id = JSON.stringify({ source: stationHost.source, station: station.id })
+		if(self.E.mixer.stationSources[id]) return
+		if(!self.E.mixer.sources[stationHost.source]) return debug('missing source for station', station)
 
 		var el = document.createElement('option')
-		el.value = station.id
+		el.value = id
 		el.textContent = station.name
-		self.E.mixer.stations[station.id] = el
-		self.E.mixer.sources[station.source].appendChild(el)
-	}
+		self.E.mixer.stationSources[id] = el
+		self.E.mixer.sources[stationHost.source].appendChild(el)
+	})
 
 	pull(self.player.remote.on('source:add'), pull.drain(function(e) {
-		addSource(e[2])
+		addSource(e[1])
 	}))
 	pull(self.player.remote.on('station:add'), pull.drain(function(e) {
-		addStation(e[2])
+		addStation(e[1])
 	}))
 
 	Promise.coroutine(function*() {
-		var sources = yield self.player.remote.sources()
-		var stations = yield self.player.remote.stations()
+		const sources = yield self.player.remote.sources()
+		const stationHosts = yield self.player.remote.stationHosts()
 
-		debug('got', sources, stations)
+		debug('got', sources, stations, stationHosts)
 
-		for(var id in sources) {
-			addSource(sources[id])
+		for(const [_, source] of sources) {
+			addSource(source)
 		}
 
-		for(var id in stations) {
-			addStation(stations[id])
+		for(const stationHost of stationHosts) {
+			yield addStationHost(stationHost)
 		}
 	})()
 

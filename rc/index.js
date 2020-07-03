@@ -47,9 +47,9 @@ if(process.browser)
 	exports.lookups.push(function(rc, key, value) {
 		var index = 'rc - ' + rc.namespacePath.join('/') + ' - ' + key
 		if(value === undefined)
-			return localStorage[index]
+			return localStorage.getItem(index)
 		else
-			localStorage[index] = value
+			localStorage.setItem(index, value)
 	})
 exports.lookups.push(function(rc, key, value) {
 	var path = rc.namespacePath.join('_')
