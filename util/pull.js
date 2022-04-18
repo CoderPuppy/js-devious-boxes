@@ -7,6 +7,7 @@ pull.from = require('stream-to-pull-stream')
 pull.defer = require('pull-defer')
 pull.pushable = require('pull-pushable')
 // pull.flow = require('pull-flow')
+pull.through = require('pull-through')
 pull.tee = require('pull-tee')
 pull.seaport = (function() {
 	var semver = require('semver')

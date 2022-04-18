@@ -81,14 +81,14 @@ module.exports = function(ports) {
 		}
 
 		return pull(
-			pull.Through(function(read) {
+			function(read) {
 				return function(end, cb) {
 					read(end, function(err, data) {
 						if(err) console.log(err)
 						cb(err, data)
 					})
 				}
-			})(),
+			},
 			pull.from.duplex(mx)
 		)
 	}

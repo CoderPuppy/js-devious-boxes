@@ -16,7 +16,7 @@ exports = module.exports = function*(ports, argv) {
 		})
 	}, 60 * 1000)
 
-	var server = dnode(require('../account-provider').publish(client))
+	var server = dnode(require('../account-provider').publish(client), { weak: false })
 	server.listen(ports.register('devious-boxes:account-provider', { account: username }))
 	// this is just an easy way to make it never be done
 	// so it can keep hosting the server

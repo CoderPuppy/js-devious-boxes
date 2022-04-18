@@ -117,10 +117,10 @@ function Player(ports, speaker, opts) {
 			} else if(op == 'del') {
 				if(self.accounts[meta.account]) {
 					var account = self.accounts[meta.account]
-					var host = account.hosts.get(hostId)
+					var host = account.hosts[hostId]
 					delete account.hosts[hostId]
 					var stations = []
-					for(var s of host.stations.values()) {
+					for(var s of host.stations) {
 						rmStation(s)
 					}
 					self.emit('host:rm', host)
